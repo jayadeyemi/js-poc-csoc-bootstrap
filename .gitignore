@@ -1,0 +1,27 @@
+/references
+
+# Credentials — never commit real credentials
+credentials/clouds.yaml
+credentials/*.yaml
+credentials/*.env
+.env
+*.env
+!credentials/clouds.yaml.example
+!credentials/README.md
+
+# Kubeconfig files produced by scripts
+*.kubeconfig
+**/*.kubeconfig
+kubeconfig
+
+# Rendered/generated CAPI manifests
+iac/capi/clusters/**/generated/
+
+# Python / tool caches
+__pycache__/
+*.pyc
+.python-version
+
+# OS artifacts
+.DS_Store
+Thumbs.db

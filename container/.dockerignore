@@ -1,0 +1,8 @@
+# Never include credentials in the image
+credentials/
+.env
+*.env
+**/.env
+**/secrets/
+**/*.kubeconfig
+kubeconfig
