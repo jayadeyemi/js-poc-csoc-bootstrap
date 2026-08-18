@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: csoc-fleet
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  description: "CSOC fleet management: SpokeCluster CRs from js-poc-csoc-fleet only."
+  sourceRepos:
+    - https://github.com/jayadeyemi/js-poc-csoc-fleet
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: spokeclusters
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: csoc.js2.org
+      kind: SpokeCluster

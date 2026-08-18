@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: spoke-observability
+  namespace: argocd
+spec:
+  goTemplate: true
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            csoc.js2.org/type: spoke
+            csoc.js2.org/observability: enabled
+  template:
+    metadata:
+      name: "{{.name}}-observability"
+      annotations:
+        argocd.argoproj.io/sync-wave: "10"
+    spec:
+      project: csoc-baseline
+      source:
+        repoURL: https://github.com/jayadeyemi/js-poc-csoc-app-catalog
+        targetRevision: main
+        path: observability
+      destination:
+        server: "{{.server}}"
+        namespace: csoc-monitoring
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

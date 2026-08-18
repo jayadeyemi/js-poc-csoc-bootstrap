@@ -35,6 +35,6 @@ docker run --rm -it \
   --volume "${CREDENTIALS_DIR}:/home/jetstream/.config/openstack:ro" \
   --volume "${KUBECONFIG_DIR}:/home/jetstream/.kube" \
   --volume "${REPO_ROOT}:/workspace" \
-  --env "OS_CLOUD=${OS_CLOUD:-jetstream2}" \
+  --env "OS_CLOUD=${OS_CLOUD:-openstack}" \
   "${IMAGE_NAME}:${IMAGE_TAG}" \
   "$@"

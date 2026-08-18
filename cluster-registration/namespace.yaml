@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cluster-registration
+  labels:
+    csoc.js2.org/managed: "true"
+---
+# spokeclusters namespace must exist before KRO can reconcile SpokeCluster CRs
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spokeclusters
+  labels:
+    csoc.js2.org/managed: "true"

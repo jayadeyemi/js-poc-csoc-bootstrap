@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# Full orchestration: build container → provision Magnum → install CAPI → provision workload cluster.
+# Full orchestration: build container → Magnum → CAPI bootstrap → Argo CD install → GitOps hand-off.
 # Each step is idempotent; re-running is safe.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="${SCRIPT_DIR}"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${REPO_ROOT}/scripts/lib/logging.sh"
-
-CLUSTER_DIR="${1:-${REPO_ROOT}/iac/capi/clusters/example-cluster}"
 
 log::info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 log::info " Jetstream2 CSOC Bootstrap"
@@ -25,10 +23,15 @@ bash "${REPO_ROOT}/scripts/magnum/wait.sh"
 log::step D "Retrieve management cluster kubeconfig"
 bash "${REPO_ROOT}/scripts/magnum/kubeconfig.sh"
 
-log::step E "Install CAPI + CAPO controllers"
+log::step E "Bootstrap CAPI + CAPO controllers (pre-GitOps, one-time)"
 bash "${REPO_ROOT}/scripts/capi/install-controllers.sh"
+bash "${REPO_ROOT}/scripts/capi/create-cloud-secret.sh"
 
-log::step F "Provision workload cluster via CAPI"
-bash "${REPO_ROOT}/scripts/capi/provision-cluster.sh" "${CLUSTER_DIR}"
+log::step F "Install Argo CD on management cluster"
+bash "${REPO_ROOT}/scripts/argocd/install.sh"
 
-log::success "Bootstrap complete."
+log::step G "Apply App-of-Apps — hand off management cluster to GitOps"
+bash "${REPO_ROOT}/scripts/argocd/bootstrap-apps.sh"
+
+log::success "Bootstrap complete. Git is now the control plane."
+log::info   "Add spoke clusters by opening PRs to js-poc-csoc-fleet."

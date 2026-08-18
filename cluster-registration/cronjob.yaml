@@ -1,0 +1,113 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cluster-registration
+  namespace: cluster-registration
+spec:
+  # Runs every 2 minutes; idempotent — skips already-registered clusters
+  schedule: "*/2 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: cluster-registration
+          restartPolicy: OnFailure
+          containers:
+            - name: register
+              image: bitnami/kubectl:1.29
+              command: ["/bin/sh"]
+              args:
+                - -c
+                - |
+                  set -euo pipefail
+
+                  echo "[registration] Starting cluster registration pass"
+
+                  # List all SpokeCluster objects across all namespaces
+                  kubectl get spokecluster --all-namespaces -o json \
+                    | /bin/sh -c '
+                      while IFS= read -r item; do
+                        NAME=$(echo "$item" | kubectl get -o jsonpath="{.metadata.name}" -f - 2>/dev/null || true)
+                        NS=$(echo "$item" | kubectl get -o jsonpath="{.metadata.namespace}" -f - 2>/dev/null || true)
+                        READY=$(echo "$item" | kubectl get -o jsonpath="{.status.ready}" -f - 2>/dev/null || echo "false")
+
+                        [ "$READY" != "true" ] && { echo "[registration] $NAME: not ready, skipping"; continue; }
+
+                        # Skip if Argo CD cluster secret already exists
+                        if kubectl get secret "cluster-${NAME}" -n argocd >/dev/null 2>&1; then
+                          echo "[registration] $NAME: already registered"
+                          continue
+                        fi
+
+                        # Retrieve CAPI-provisioned kubeconfig secret (value key)
+                        KC_B64=$(kubectl get secret "${NAME}-kubeconfig" -n "$NS" \
+                          -o jsonpath="{.data.value}" 2>/dev/null || true)
+                        [ -z "$KC_B64" ] && { echo "[registration] $NAME: kubeconfig secret not found"; continue; }
+
+                        KC=$(echo "$KC_B64" | base64 -d)
+
+                        SERVER=$(echo "$KC" | kubectl config view \
+                          --kubeconfig=/dev/stdin \
+                          -o jsonpath="{.clusters[0].cluster.server}" --raw)
+                        CA=$(echo "$KC" | kubectl config view \
+                          --kubeconfig=/dev/stdin \
+                          -o jsonpath="{.clusters[0].cluster.certificate-authority-data}" --raw)
+                        CERT=$(echo "$KC" | kubectl config view \
+                          --kubeconfig=/dev/stdin \
+                          -o jsonpath="{.users[0].user.client-certificate-data}" --raw)
+                        KEY=$(echo "$KC" | kubectl config view \
+                          --kubeconfig=/dev/stdin \
+                          -o jsonpath="{.users[0].user.client-key-data}" --raw)
+
+                        # Collect registration labels from SpokeCluster spec
+                        CUSTOMER=$(echo "$item" | kubectl get -o \
+                          jsonpath="{.spec.registration.labels['\''csoc\.js2\.org/customer'\'']}" -f - 2>/dev/null || echo "")
+                        ENVIRONMENT=$(echo "$item" | kubectl get -o \
+                          jsonpath="{.spec.registration.labels['\''csoc\.js2\.org/environment'\'']}" -f - 2>/dev/null || echo "")
+                        OWNERSHIP=$(echo "$item" | kubectl get -o \
+                          jsonpath="{.spec.registration.labels['\''csoc\.js2\.org/ownership'\'']}" -f - 2>/dev/null || echo "csoc")
+                        HELLO=$(echo "$item" | kubectl get -o \
+                          jsonpath="{.spec.registration.labels['\''csoc\.js2\.org/hello-csoc'\'']}" -f - 2>/dev/null || echo "")
+
+                        # Build Argo CD cluster secret
+                        cat <<EOF | kubectl apply -f -
+                  apiVersion: v1
+                  kind: Secret
+                  metadata:
+                    name: cluster-${NAME}
+                    namespace: argocd
+                    labels:
+                      argocd.argoproj.io/secret-type: cluster
+                      csoc.js2.org/type: spoke
+                      csoc.js2.org/name: ${NAME}
+                      csoc.js2.org/customer: ${CUSTOMER}
+                      csoc.js2.org/environment: ${ENVIRONMENT}
+                      csoc.js2.org/ownership: ${OWNERSHIP}
+                      csoc.js2.org/hello-csoc: ${HELLO}
+                  type: Opaque
+                  stringData:
+                    name: ${NAME}
+                    server: ${SERVER}
+                    config: |
+                      {
+                        "tlsClientConfig": {
+                          "caData": "${CA}",
+                          "certData": "${CERT}",
+                          "keyData": "${KEY}"
+                        }
+                      }
+                  EOF
+
+                        echo "[registration] $NAME: registered at $SERVER"
+                      done
+                    '
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi

@@ -3,7 +3,7 @@ MAKEFLAGS     += --no-print-directory
 
 IMAGE_NAME  ?= jetstream2-mgmt
 IMAGE_TAG   ?= latest
-OS_CLOUD    ?= jetstream2
+OS_CLOUD    ?= openstack
 CLUSTER_DIR ?= iac/capi/clusters/example-cluster
 
 export JETSTREAM_IMAGE_NAME = $(IMAGE_NAME)
@@ -12,8 +12,9 @@ export OS_CLOUD
 
 .PHONY: help \
 	container-build container-run \
-	magnum-provision magnum-wait magnum-kubeconfig \
-	capi-install capi-secret capi-cluster \
+	magnum-templates magnum-provision magnum-wait magnum-kubeconfig \
+	capi-install capi-secret \
+	argocd-install argocd-bootstrap argocd-status \
 	bootstrap
 
 help: ## Show available targets
@@ -28,6 +29,9 @@ container-run: ## Run the management container interactively
 	bash scripts/container/run.sh
 
 # ── Magnum ────────────────────────────────────────────────────────────────────
+magnum-templates: ## Save a timestamped inventory of visible Magnum templates
+	bash scripts/magnum/inventory-templates.sh
+
 magnum-provision: ## Idempotently provision the Magnum management cluster
 	bash scripts/magnum/provision.sh
 
@@ -47,6 +51,16 @@ capi-secret: ## Create/update the OpenStack cloud secret for CAPO
 capi-cluster: ## Provision a workload cluster (set CLUSTER_DIR to override)
 	bash scripts/capi/provision-cluster.sh $(CLUSTER_DIR)
 
-# ── Full pipeline ─────────────────────────────────────────────────────────────
-bootstrap: ## Full orchestration: container → Magnum → CAPI → workload cluster
-	bash scripts/bootstrap.sh $(CLUSTER_DIR)
+# ── Argo CD ────────────────────────────────────────────────────────────────
+argocd-install: ## Install Argo CD via Helm on the management cluster
+	bash scripts/argocd/install.sh
+
+argocd-bootstrap: ## Apply App-of-Apps and hand off cluster to GitOps
+	bash scripts/argocd/bootstrap-apps.sh
+
+argocd-status: ## Show all Argo CD Application sync status
+	kubectl get applications -n argocd
+
+# ── Full pipeline ────────────────────────────────────────────────────
+bootstrap: ## Full orchestration: container → Magnum → CAPI → Argo CD → GitOps
+	bash scripts/bootstrap.sh

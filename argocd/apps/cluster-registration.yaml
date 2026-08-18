@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cluster-registration
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  project: csoc-platform
+  source:
+    repoURL: https://github.com/jayadeyemi/js-poc-csoc-bootstrap
+    targetRevision: main
+    path: cluster-registration
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cluster-registration
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

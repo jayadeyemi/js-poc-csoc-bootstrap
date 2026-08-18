@@ -1,0 +1,21 @@
+{
+  "captured_at": "2026-08-18T23:04:43Z",
+  "cloud": "openstack",
+  "project_id": "53f449a040d14cef8512b69e4ad521cd",
+  "count": 11,
+  "public_count": 8,
+  "project_private_count": 3,
+  "templates": [
+    {"uuid":"284de191-b8ea-4dae-9046-6ab982bd1c3a","name":"kubernetes-1-34-jammy","public":true,"hidden":false,"project_id":"7146c507800e4e82be58e9035c58e80f","image_id":"ubuntu-jammy-kube-v1.34.8-260518-1604","coe":"kubernetes","created_at":"2026-07-24T20:52:30+00:00"},
+    {"uuid":"2a0cf25c-41f2-4905-a35f-de153f92458d","name":"kubernetes-1-28-jammy","public":true,"hidden":false,"project_id":"7146c507800e4e82be58e9035c58e80f","image_id":"ubuntu-jammy-kube-v1.28.13-240828-1652","coe":"kubernetes","created_at":"2024-12-04T15:56:11+00:00"},
+    {"uuid":"f48228b6-4009-45ed-99fb-36f97f429fb5","name":"kubernetes-1-29-jammy","public":true,"hidden":false,"project_id":"7146c507800e4e82be58e9035c58e80f","image_id":"ubuntu-jammy-kube-v1.29.8-240828-1652","coe":"kubernetes","created_at":"2024-12-04T15:56:16+00:00"},
+    {"uuid":"2d56f33a-713c-488a-b65f-47b625d832cd","name":"kubernetes-1-30-jammy","public":true,"hidden":false,"project_id":"7146c507800e4e82be58e9035c58e80f","image_id":"ubuntu-jammy-kube-v1.30.4-240828-1653","coe":"kubernetes","created_at":"2024-12-04T16:15:08+00:00"},
+    {"uuid":"e16df0b2-5cc0-480a-b64e-1489962545bd","name":"kubernetes-1-31-jammy","public":true,"hidden":false,"project_id":"7146c507800e4e82be58e9035c58e80f","image_id":"ubuntu-jammy-kube-v1.31.0-240828-1652","coe":"kubernetes","created_at":"2024-12-04T15:51:42+00:00"},
+    {"uuid":"60372f04-f98f-41c5-bd24-82222a7630d1","name":"kubernetes-1-32-jammy","public":true,"hidden":false,"project_id":"7146c507800e4e82be58e9035c58e80f","image_id":"ubuntu-jammy-kube-v1.32.6-250626-0849","coe":"kubernetes","created_at":"2025-07-04T13:49:26+00:00"},
+    {"uuid":"ff32fc8d-23de-417f-b6cc-5f03f2aa6628","name":"kubernetes-1-33-jammy","public":true,"hidden":false,"project_id":"7146c507800e4e82be58e9035c58e80f","image_id":"ubuntu-jammy-kube-v1.33.2-250626-0848","coe":"kubernetes","created_at":"2025-07-04T13:49:30+00:00"},
+    {"uuid":"ce4a54dd-7d3d-486c-ab61-71d7a02b3076","name":"kubernetes-1-33-jammy-fixed-labels","public":true,"hidden":false,"project_id":"7146c507800e4e82be58e9035c58e80f","image_id":"ubuntu-jammy-kube-v1.33.2-250626-0848","coe":"kubernetes","created_at":"2026-03-09T18:48:13+00:00"},
+    {"uuid":"0ccbc012-1d02-42e8-873f-67ee9e09c2ce","name":"kubernetes-1-35-jammy-upgrade-lab","public":false,"hidden":false,"project_id":"53f449a040d14cef8512b69e4ad521cd","image_id":"551d7753-6495-4fa1-a828-7c0b3a4553c8","coe":"kubernetes","created_at":"2026-07-24T23:19:37+00:00"},
+    {"uuid":"8547bb49-9721-4dce-9254-a6ffac42d6c1","name":"kubernetes-1-36-jammy-upgrade-lab","public":false,"hidden":false,"project_id":"53f449a040d14cef8512b69e4ad521cd","image_id":"bb385734-ad45-47be-aef3-b2ee88522d92","coe":"kubernetes","created_at":"2026-07-24T23:19:37+00:00"},
+    {"uuid":"a287539d-fe6e-46ff-85ff-d0379e088827","name":"ubuntu2204-k8s1.36.1-20260720","public":false,"hidden":false,"project_id":"53f449a040d14cef8512b69e4ad521cd","image_id":"cdec1bd6-8555-46cc-9dc9-4b767d7ed4fb","coe":"kubernetes","created_at":"2026-07-24T06:13:09+00:00"}
+  ]
+}

@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: csoc-app-of-apps
+  namespace: argocd
+  # This file is applied once manually by scripts/argocd/bootstrap-apps.sh.
+  # After that, Argo CD manages everything under argocd/ from Git.
+spec:
+  project: csoc-platform
+  source:
+    repoURL: https://github.com/jayadeyemi/js-poc-csoc-bootstrap
+    targetRevision: main
+    directory:
+      recurse: true
+      path: argocd
+      exclude: "install/**"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: false          # never auto-delete AppProjects or ApplicationSets
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
