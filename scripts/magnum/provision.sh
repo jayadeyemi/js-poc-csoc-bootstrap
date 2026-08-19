@@ -62,9 +62,37 @@ case "${CLUSTER_STATUS}" in
     [[ -n "${MAGNUM_FIXED_NETWORK}" ]] && CLUSTER_ARGS+=(--fixed-network "${MAGNUM_FIXED_NETWORK}")
     [[ -n "${MAGNUM_FIXED_SUBNET}" ]]  && CLUSTER_ARGS+=(--fixed-subnet  "${MAGNUM_FIXED_SUBNET}")
 
-    CLUSTER_ID=$(openstack coe cluster create "${MAGNUM_CLUSTER_NAME}" \
-      "${CLUSTER_ARGS[@]}" -f value -c uuid)
-    [[ -n "${CLUSTER_ID}" ]] || log::die "Magnum did not return a cluster UUID"
+    CREATE_OUTPUT=""
+    CREATE_FAILED=false
+    if ! CREATE_OUTPUT=$(openstack coe cluster create "${MAGNUM_CLUSTER_NAME}" \
+      "${CLUSTER_ARGS[@]}" 2>&1); then
+      # A transport/client failure can occur after Magnum accepted the request.
+      # Reconcile by exact name before deciding whether it is safe to retry.
+      CREATE_FAILED=true
+      log::warn "Create command returned an error; checking Magnum before deciding whether it failed."
+    fi
+
+    # The Magnum OSC plugin does not support the generic -f/-c formatter flags
+    # on `coe cluster create`. Resolve the UUID from the unique exact name after
+    # creation instead of parsing its human-oriented table output.
+    CLUSTER_ID=""
+    for _ in {1..12}; do
+      mapfile -t MATCHING_CLUSTER_IDS < <(os::cluster_ids_by_name "${MAGNUM_CLUSTER_NAME}")
+      if (( ${#MATCHING_CLUSTER_IDS[@]} == 1 )); then
+        CLUSTER_ID=${MATCHING_CLUSTER_IDS[0]}
+        break
+      fi
+      (( ${#MATCHING_CLUSTER_IDS[@]} > 1 )) \
+        && log::die "Magnum created multiple clusters named '${MAGNUM_CLUSTER_NAME}'; refusing ambiguous ownership"
+      sleep 5
+    done
+    if [[ -z "${CLUSTER_ID}" ]]; then
+      [[ "${CREATE_FAILED}" == false ]] \
+        || log::die "Magnum cluster creation failed: ${CREATE_OUTPUT}"
+      log::die "Magnum accepted cluster creation but its UUID did not become visible"
+    fi
+    [[ "${CREATE_FAILED}" == false ]] \
+      || log::warn "Magnum accepted the cluster request despite the client error."
 
     mkdir -p "$(dirname "${STATE_FILE}")"
     STATE_TMP=$(mktemp "${STATE_FILE}.tmp.XXXXXX")
