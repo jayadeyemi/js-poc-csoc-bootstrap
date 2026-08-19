@@ -48,7 +48,8 @@ PR → js-poc-csoc-fleet (SpokeCluster CR)
 - The `SpokeCluster` spec surface must stay stable — changing field names creates a new `GraphRevision` and can stall existing instances.
 - Add new optional fields with defaults; never rename or remove existing spec fields in place.
 - Move implementation complexity into `resources:` not `spec:`.
-- The CAPI template content (`iac/capi/templates/openstack-cluster.yaml`) lives inside the RGD `resources:` block — it does not exist as a standalone envsubst template in the GitOps world.
+- The complete CAPI graph lives only in the RGD `resources:` block; no
+  standalone provisioning template or script is maintained.
 
 ## Argo CD conventions
 

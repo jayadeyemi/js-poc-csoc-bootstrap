@@ -9,7 +9,7 @@ spec:
   project: csoc-platform
   source:
     repoURL: https://github.com/jayadeyemi/js-poc-csoc-bootstrap
-    targetRevision: main
+    targetRevision: master
     path: cluster-registration
   destination:
     server: https://kubernetes.default.svc
@@ -21,3 +21,9 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

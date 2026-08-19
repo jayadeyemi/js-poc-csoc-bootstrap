@@ -12,30 +12,39 @@ source "${REPO_ROOT}/iac/magnum/cluster.env"
 
 KUBECONFIG_DIR="${HOME}/.kube"
 KUBECONFIG_FILE="${KUBECONFIG_DIR}/${MAGNUM_CLUSTER_NAME}.yaml"
+STATE_FILE="${MAGNUM_STATE_FILE:-${REPO_ROOT}/.state/magnum-cluster.json}"
+CLUSTER_ID=$(os::verify_owned_cluster "${STATE_FILE}" "${MAGNUM_CLUSTER_NAME}")
 
 log::step 1 "Verifying cluster is active"
-status=$(os::cluster_status "${MAGNUM_CLUSTER_NAME}")
+status=$(os::cluster_status "${CLUSTER_ID}")
 [[ "${status}" == "CREATE_COMPLETE" ]] \
   || log::die "Cluster is not active (status: ${status}). Run 'make magnum-wait' first."
 
 mkdir -p "${KUBECONFIG_DIR}"
+chmod 700 "${KUBECONFIG_DIR}"
+STAGING_DIR=$(mktemp -d "${KUBECONFIG_DIR}/.magnum-kubeconfig.XXXXXX")
+cleanup() {
+  rm -rf -- "${STAGING_DIR}"
+}
+trap cleanup EXIT
 
 log::step 2 "Fetching kubeconfig → ${KUBECONFIG_FILE}"
-openstack coe cluster config "${MAGNUM_CLUSTER_NAME}" \
+openstack coe cluster config "${CLUSTER_ID}" \
   --use-keyring \
   --output-certs \
   --force \
-  --dir "${KUBECONFIG_DIR}" 2>/dev/null \
-  || openstack coe cluster config "${MAGNUM_CLUSTER_NAME}" \
+  --dir "${STAGING_DIR}" 2>/dev/null \
+  || openstack coe cluster config "${CLUSTER_ID}" \
        --force \
-       --dir "${KUBECONFIG_DIR}"
+       --dir "${STAGING_DIR}"
 
-# Magnum writes the file as "config" in the target dir; rename for clarity.
-if [[ -f "${KUBECONFIG_DIR}/config" && ! -f "${KUBECONFIG_FILE}" ]]; then
-  mv "${KUBECONFIG_DIR}/config" "${KUBECONFIG_FILE}"
-fi
+FETCHED_CONFIG=$(find "${STAGING_DIR}" -maxdepth 1 -type f \
+  \( -name config -o -name '*.yaml' -o -name '*.conf' \) -print -quit)
+[[ -n "${FETCHED_CONFIG}" ]] || log::die "Magnum did not produce a kubeconfig"
+kubectl --kubeconfig="${FETCHED_CONFIG}" config view --raw >/dev/null \
+  || log::die "Magnum produced an invalid kubeconfig"
 
-chmod 600 "${KUBECONFIG_FILE}"
+install -m 600 "${FETCHED_CONFIG}" "${KUBECONFIG_FILE}"
 
 log::step 3 "Merging kubeconfig"
 k8s::merge_kubeconfig "${KUBECONFIG_FILE}"

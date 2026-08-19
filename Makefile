@@ -4,22 +4,30 @@ MAKEFLAGS     += --no-print-directory
 IMAGE_NAME  ?= jetstream2-mgmt
 IMAGE_TAG   ?= latest
 OS_CLOUD    ?= openstack
-CLUSTER_DIR ?= iac/capi/clusters/example-cluster
-
 export JETSTREAM_IMAGE_NAME = $(IMAGE_NAME)
 export JETSTREAM_IMAGE_TAG  = $(IMAGE_TAG)
 export OS_CLOUD
 
 .PHONY: help \
+	validate security-scan preflight \
 	container-build container-run \
 	magnum-templates magnum-provision magnum-wait magnum-kubeconfig \
-	capi-install capi-secret \
+	capi-secret \
 	argocd-install argocd-bootstrap argocd-status \
 	bootstrap
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 	  | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
+
+validate: ## Run non-destructive static validation
+	bash scripts/validate.sh
+
+security-scan: ## Scan publishable files for credential material
+	bash scripts/security/scan-secrets.sh
+
+preflight: ## Run read-only OpenStack and ownership checks
+	bash scripts/magnum/preflight.sh
 
 # ── Container ────────────────────────────────────────────────────────────────
 container-build: ## Build the management container image
@@ -42,14 +50,8 @@ magnum-kubeconfig: ## Fetch and merge the Magnum cluster kubeconfig
 	bash scripts/magnum/kubeconfig.sh
 
 # ── CAPI ──────────────────────────────────────────────────────────────────────
-capi-install: ## Install CAPI + CAPO controllers on the management cluster
-	bash scripts/capi/install-controllers.sh
-
 capi-secret: ## Create/update the OpenStack cloud secret for CAPO
 	bash scripts/capi/create-cloud-secret.sh
-
-capi-cluster: ## Provision a workload cluster (set CLUSTER_DIR to override)
-	bash scripts/capi/provision-cluster.sh $(CLUSTER_DIR)
 
 # ── Argo CD ────────────────────────────────────────────────────────────────
 argocd-install: ## Install Argo CD via Helm on the management cluster

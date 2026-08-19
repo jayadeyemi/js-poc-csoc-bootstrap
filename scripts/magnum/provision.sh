@@ -13,58 +13,76 @@ CLUSTER_ENV="${REPO_ROOT}/iac/magnum/cluster.env"
 # shellcheck source=iac/magnum/cluster.env
 source "${CLUSTER_ENV}"
 
-log::step 1 "Verifying OpenStack authentication"
-os::auth_check
+STATE_FILE="${MAGNUM_STATE_FILE:-${REPO_ROOT}/.state/magnum-cluster.json}"
+DRY_RUN=false
+if [[ "${1:-}" == "--dry-run" ]]; then
+  DRY_RUN=true
+elif (( $# > 0 )); then
+  log::die "Usage: $0 [--dry-run]"
+fi
 
-# ── Cluster template ──────────────────────────────────────────────────────────
-log::step 2 "Ensuring cluster template '${MAGNUM_TEMPLATE_NAME}'"
-
-TEMPLATE_ARGS=(
-  --image            "${MAGNUM_IMAGE}"
-  --external-network "${MAGNUM_EXTERNAL_NETWORK}"
-  --dns-nameserver   "${MAGNUM_DNS_NAMESERVER}"
-  --master-flavor    "${MAGNUM_MASTER_FLAVOR}"
-  --flavor           "${MAGNUM_WORKER_FLAVOR}"
-  --network-driver   "${MAGNUM_NETWORK_DRIVER}"
-  --docker-volume-size 50
-  --coe              kubernetes
-  --public
-  --labels           "${MAGNUM_LABELS}"
-)
-
-TEMPLATE_ID=$(os::ensure_cluster_template "${MAGNUM_TEMPLATE_NAME}" "${TEMPLATE_ARGS[@]}")
-log::success "Template ID: ${TEMPLATE_ID}"
+log::step 1 "Running read-only preflight"
+bash "${REPO_ROOT}/scripts/magnum/preflight.sh"
 
 # ── Cluster ───────────────────────────────────────────────────────────────────
-log::step 3 "Ensuring Magnum cluster '${MAGNUM_CLUSTER_NAME}'"
+log::step 2 "Ensuring Magnum cluster '${MAGNUM_CLUSTER_NAME}'"
 
-CLUSTER_STATUS=$(os::cluster_status "${MAGNUM_CLUSTER_NAME}")
+mapfile -t MATCHING_CLUSTER_IDS < <(os::cluster_ids_by_name "${MAGNUM_CLUSTER_NAME}")
+if (( ${#MATCHING_CLUSTER_IDS[@]} == 1 )); then
+  CLUSTER_ID=$(os::verify_owned_cluster "${STATE_FILE}" "${MAGNUM_CLUSTER_NAME}")
+  CLUSTER_STATUS=$(os::cluster_status "${CLUSTER_ID}")
+else
+  CLUSTER_ID=""
+  CLUSTER_STATUS="NOT_FOUND"
+fi
 
 case "${CLUSTER_STATUS}" in
   CREATE_COMPLETE)
-    log::success "Cluster '${MAGNUM_CLUSTER_NAME}' already exists and is active."
+    log::success "Owned cluster '${MAGNUM_CLUSTER_NAME}' is active (${CLUSTER_ID})."
     ;;
   CREATE_IN_PROGRESS)
-    log::info "Cluster '${MAGNUM_CLUSTER_NAME}' is already being created."
+    log::info "Owned cluster '${MAGNUM_CLUSTER_NAME}' is being created (${CLUSTER_ID})."
     ;;
   NOT_FOUND)
+    if [[ "${DRY_RUN}" == true ]]; then
+      log::success "Dry-run passed; cluster creation would use template ${MAGNUM_TEMPLATE_ID}"
+      exit 0
+    fi
     log::info "Creating cluster '${MAGNUM_CLUSTER_NAME}' ..."
 
     CLUSTER_ARGS=(
-      --cluster-template "${MAGNUM_TEMPLATE_NAME}"
+      --cluster-template "${MAGNUM_TEMPLATE_ID}"
       --master-count     "${MAGNUM_MASTER_COUNT}"
       --node-count       "${MAGNUM_NODE_COUNT}"
+      --master-flavor    "${MAGNUM_MASTER_FLAVOR}"
+      --flavor           "${MAGNUM_WORKER_FLAVOR}"
+      --keypair          "${MAGNUM_KEYPAIR}"
     )
 
-    [[ -n "${MAGNUM_KEYPAIR}" ]] && CLUSTER_ARGS+=(--keypair "${MAGNUM_KEYPAIR}")
     [[ -n "${MAGNUM_FIXED_NETWORK}" ]] && CLUSTER_ARGS+=(--fixed-network "${MAGNUM_FIXED_NETWORK}")
     [[ -n "${MAGNUM_FIXED_SUBNET}" ]]  && CLUSTER_ARGS+=(--fixed-subnet  "${MAGNUM_FIXED_SUBNET}")
 
-    openstack coe cluster create "${MAGNUM_CLUSTER_NAME}" "${CLUSTER_ARGS[@]}"
-    log::success "Cluster creation requested. Run 'make magnum-wait' to watch progress."
+    CLUSTER_ID=$(openstack coe cluster create "${MAGNUM_CLUSTER_NAME}" \
+      "${CLUSTER_ARGS[@]}" -f value -c uuid)
+    [[ -n "${CLUSTER_ID}" ]] || log::die "Magnum did not return a cluster UUID"
+
+    mkdir -p "$(dirname "${STATE_FILE}")"
+    STATE_TMP=$(mktemp "${STATE_FILE}.tmp.XXXXXX")
+    jq -n \
+      --arg cluster_id "${CLUSTER_ID}" \
+      --arg cluster_name "${MAGNUM_CLUSTER_NAME}" \
+      --arg template_id "${MAGNUM_TEMPLATE_ID}" \
+      --arg created_at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+      '{cluster_id:$cluster_id,cluster_name:$cluster_name,template_id:$template_id,created_at:$created_at}' \
+      >"${STATE_TMP}"
+    chmod 600 "${STATE_TMP}"
+    mv "${STATE_TMP}" "${STATE_FILE}"
+
+    log::success "Cluster creation requested: ${CLUSTER_ID}"
+    log::info "Run 'make magnum-wait' to watch progress."
     ;;
   CREATE_FAILED|*FAILED*)
-    log::die "Cluster '${MAGNUM_CLUSTER_NAME}' is in a failed state: ${CLUSTER_STATUS}. Check Magnum logs."
+    log::die "Owned cluster '${CLUSTER_ID}' is in a failed state: ${CLUSTER_STATUS}."
     ;;
   *)
     log::warn "Cluster '${MAGNUM_CLUSTER_NAME}' is in unexpected state: ${CLUSTER_STATUS}"

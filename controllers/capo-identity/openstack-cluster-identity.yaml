@@ -1,0 +1,11 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: OpenStackClusterIdentity
+metadata:
+  name: csoc-openstack
+spec:
+  namespaceSelector:
+    matchLabels:
+      csoc.js2.org/openstack-credentials: allowed
+  secretRef:
+    name: openstack-cloud-config
+    namespace: capo-system

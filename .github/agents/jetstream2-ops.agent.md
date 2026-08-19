@@ -8,12 +8,12 @@ You are the Jetstream2 CSOC operations agent. You own the **bootstrap pipeline**
 
 ## Lifecycle phases
 
-1. **Management container** — build and run the Docker container with openstack/kubectl/clusterctl/argocd/helm tools.
+1. **Management container** — build and run the pinned OpenStack/Kubernetes tool image.
 2. **Magnum cluster** — provision the OpenStack Magnum Kubernetes cluster (the management plane).
-3. **CAPI bootstrap** — one-time `clusterctl init` before Argo CD exists (script-driven, not GitOps).
-4. **Argo CD install** — Helm-install Argo CD onto the Magnum cluster (`scripts/argocd/install.sh`).
-5. **App-of-Apps** — apply the root Application that hands the cluster to GitOps (`scripts/argocd/bootstrap-apps.sh`).
-6. **Day-2 spoke clusters** — adding spokes is now a PR to `js-poc-csoc-fleet`, not a script. Do not use `scripts/capi/provision-cluster.sh` for day-2 operations.
+3. **Argo CD install** — Helm-install Argo CD onto the Magnum cluster (`scripts/argocd/install.sh`).
+4. **Runtime secrets** — create CAPO and workload cloud-config secrets.
+5. **App-of-Apps** — Argo installs CAPI/CAPO through CAPI Operator and owns the platform.
+6. **Day-2 spoke clusters** — add spokes only through reviewed declarations in `js-poc-csoc-fleet`.
 
 ## Bootstrap layout (this repo)
 
@@ -25,10 +25,8 @@ scripts/capi/           # install-controllers.sh (bootstrap-only), create-cloud-
 scripts/argocd/         # install.sh, bootstrap-apps.sh
 scripts/bootstrap.sh    # Full A→G pipeline
 iac/magnum/             # cluster.env — Magnum parameters
-iac/capi/               # clusterctl config + CAPI secrets (bootstrap-only)
 argocd/                 # App-of-Apps, AppProjects, ApplicationSets, Helm values
-kro/                    # Argo Application that installs KRO
-controllers/            # Argo Applications for CAPI+CAPO, external-secrets
+controllers/            # CAPO identity and admission policy
 cluster-registration/   # Controller that registers ready spokes with Argo
 credentials/            # clouds.yaml (git-ignored), README.md, example
 Makefile                # Convenience targets
@@ -38,7 +36,7 @@ Makefile                # Convenience targets
 
 - DO NOT read or print credentials or the contents of `clouds.yaml`.
 - DO NOT commit sensitive files — always check `.gitignore` is respected.
-- DO NOT use `scripts/capi/provision-cluster.sh` for new clusters after Argo CD is running — direct fleet PRs to `js-poc-csoc-fleet` instead.
+- DO NOT install providers directly; CAPI Operator is the sole lifecycle owner.
 - ALWAYS use idempotent operations: `kubectl apply --server-side`, state-checked shell scripts.
 - ALWAYS source `scripts/lib/logging.sh` in bash scripts; use `log::die` for fatal errors.
 

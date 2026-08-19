@@ -31,7 +31,8 @@ Full reference: [AGENTS.md](../../AGENTS.md) · Four repos: `js-poc-csoc-bootstr
 ### New workload clusters (day-2 GitOps)
 1. Add `customers/<tenant>/<env>/cluster.yaml` (a `SpokeCluster` CR) to `js-poc-csoc-fleet`.
 2. Open a PR — Argo CD applies it, KRO reconciles it → CAPI → Jetstream2 cluster.
-3. `scripts/capi/provision-cluster.sh` is for **bootstrap-only** (pre-Argo). Do not use it for day-2.
+3. There is no direct CAPI provisioning script; CAPI/CAPO lifecycle belongs to
+   Argo CD and CAPI Operator.
 
 ### KRO RGDs
 - `SpokeCluster` RGD lives in `js-poc-csoc-platform-apis/rgds/spoke-cluster.rgd.yaml`.

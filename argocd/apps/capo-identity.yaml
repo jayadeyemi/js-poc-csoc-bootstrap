@@ -1,23 +1,22 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: csoc-platform-apis
+  name: capo-identity
   namespace: argocd
   annotations:
-    # RGDs must be deployed after KRO so KRO can compile them into CRDs
     argocd.argoproj.io/sync-wave: "-5"
 spec:
   project: csoc-platform
   source:
-    repoURL: https://github.com/jayadeyemi/js-poc-csoc-platform-apis
-    targetRevision: main
-    path: rgds
+    repoURL: https://github.com/jayadeyemi/js-poc-csoc-bootstrap
+    targetRevision: master
+    path: controllers/capo-identity
   destination:
     server: https://kubernetes.default.svc
-    namespace: kro-system
+    namespace: capo-system
   syncPolicy:
     automated:
-      prune: false          # do not auto-delete RGDs — could stall live clusters
+      prune: false
       selfHeal: true
     syncOptions:
       - ServerSideApply=true

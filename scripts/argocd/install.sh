@@ -6,9 +6,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 source "${REPO_ROOT}/scripts/lib/logging.sh"
 source "${REPO_ROOT}/scripts/lib/k8s.sh"
+source "${REPO_ROOT}/versions.env"
 
 ARGOCD_NAMESPACE="argocd"
-ARGOCD_CHART_VERSION="${ARGOCD_CHART_VERSION:-7.3.11}"
 VALUES_FILE="${REPO_ROOT}/iac/argocd/values.yaml"
 
 log::step 1 "Verifying management cluster connectivity"
@@ -36,11 +36,7 @@ kubectl wait deployment argocd-server \
   --for=condition=Available \
   --timeout=300s
 
-ARGOCD_PASSWORD=$(kubectl get secret argocd-initial-admin-secret \
-  --namespace "${ARGOCD_NAMESPACE}" \
-  -o jsonpath='{.data.password}' | base64 -d)
-
 log::success "Argo CD installed."
-log::info "  UI:      NodePort 30443 on any cluster node"
-log::info "  Login:   admin / ${ARGOCD_PASSWORD}"
+log::info "  UI:      kubectl -n argocd port-forward svc/argocd-server 8443:443"
+log::info "  Password: retrieve explicitly with 'argocd admin initial-password -n argocd'"
 log::info "  Next:    run 'make argocd-bootstrap' to apply the App-of-Apps"

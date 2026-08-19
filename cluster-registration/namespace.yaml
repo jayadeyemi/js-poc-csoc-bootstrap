@@ -12,3 +12,4 @@ metadata:
   name: spokeclusters
   labels:
     csoc.js2.org/managed: "true"
+    csoc.js2.org/openstack-credentials: allowed

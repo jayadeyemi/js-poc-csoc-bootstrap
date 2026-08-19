@@ -9,7 +9,7 @@ spec:
   project: csoc-platform
   source:
     repoURL: https://github.com/jayadeyemi/js-poc-csoc-bootstrap
-    targetRevision: main
+    targetRevision: master
     directory:
       recurse: true
       path: argocd

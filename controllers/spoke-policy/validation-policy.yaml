@@ -1,0 +1,29 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: spokecluster-node-bounds.csoc.js2.org
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - csoc.js2.org
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - spokeclusters
+  validations:
+    - expression: object.spec.kubernetes.minNodes <= object.spec.kubernetes.maxNodes
+      message: spec.kubernetes.minNodes must be less than or equal to maxNodes
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: spokecluster-node-bounds.csoc.js2.org
+spec:
+  policyName: spokecluster-node-bounds.csoc.js2.org
+  validationActions:
+    - Deny

@@ -1,30 +1,26 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: kro
+  name: openstack-resource-controller
   namespace: argocd
   annotations:
-    # Install KRO before anything that depends on its CRDs
-    argocd.argoproj.io/sync-wave: "-10"
+    argocd.argoproj.io/sync-wave: "-30"
 spec:
   project: csoc-platform
   source:
-    chart: kro
-    repoURL: registry.k8s.io/kro/charts
-    targetRevision: "0.9.3"
-    helm:
-      releaseName: kro
-      values: |
-        replicaCount: 1
+    repoURL: https://github.com/k-orc/openstack-resource-controller
+    targetRevision: v2.6.0
+    path: dist
+    directory:
+      include: install.yaml
   destination:
     server: https://kubernetes.default.svc
-    namespace: kro-system
+    namespace: orc-system
   syncPolicy:
     automated:
       prune: false
       selfHeal: true
     syncOptions:
-      - CreateNamespace=true
       - ServerSideApply=true
     retry:
       limit: 10
