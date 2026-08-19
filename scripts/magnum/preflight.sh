@@ -20,6 +20,22 @@ os::auth_check
 PROJECT_ID=$(openstack token issue -f value -c project_id)
 [[ -n "${PROJECT_ID}" ]] || log::die "Authenticated token has no project ID"
 
+AUTH_CONFIG_JSON=$(openstack configuration show -f json)
+AUTH_TYPE=$(jq -r '.auth_type // ""' <<<"${AUTH_CONFIG_JSON}")
+if [[ "${AUTH_TYPE}" == *applicationcredential* ]]; then
+  APPLICATION_CREDENTIAL_ID=$(jq -r '."auth.application_credential_id" // ""' \
+    <<<"${AUTH_CONFIG_JSON}")
+  [[ -n "${APPLICATION_CREDENTIAL_ID}" ]] \
+    || log::die "Application-credential authentication has no credential ID"
+  APPLICATION_CREDENTIAL_JSON=$(openstack application credential show \
+    "${APPLICATION_CREDENTIAL_ID}" -f json) \
+    || log::die "Unable to inspect the active application credential"
+  APPLICATION_CREDENTIAL_UNRESTRICTED=$(jq -r \
+    '.Unrestricted // .unrestricted // false' <<<"${APPLICATION_CREDENTIAL_JSON}")
+  [[ "${APPLICATION_CREDENTIAL_UNRESTRICTED}" == true ]] \
+    || log::die "The active application credential is restricted and cannot create the Magnum trustee/trust. Use password/OIDC authentication or a provider-approved credential that permits trust creation."
+fi
+
 log::step 2 "Validating provider-owned Magnum template"
 TEMPLATE_JSON=$(openstack coe cluster template show "${MAGNUM_TEMPLATE_ID}" -f json) \
   || log::die "Magnum template is unavailable: ${MAGNUM_TEMPLATE_ID}"
