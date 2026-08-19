@@ -14,21 +14,41 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out bootstrap
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           path: js-poc-csoc-bootstrap
+      - name: Resolve coordinated repository refs
+        id: refs
+        shell: bash
+        run: |
+          platform_ref=main
+          fleet_ref=main
+          if git ls-remote --exit-code \
+            https://github.com/jayadeyemi/js-poc-csoc-platform-apis.git \
+            refs/heads/agent/complete-spokecluster-lifecycle >/dev/null; then
+            platform_ref=agent/complete-spokecluster-lifecycle
+          fi
+          if git ls-remote --exit-code \
+            https://github.com/jayadeyemi/js-poc-csoc-fleet.git \
+            refs/heads/agent/update-jetstream2-spoke-prerequisites >/dev/null; then
+            fleet_ref=agent/update-jetstream2-spoke-prerequisites
+          fi
+          echo "platform_ref=${platform_ref}" >>"${GITHUB_OUTPUT}"
+          echo "fleet_ref=${fleet_ref}" >>"${GITHUB_OUTPUT}"
       - name: Check out platform APIs
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           repository: jayadeyemi/js-poc-csoc-platform-apis
+          ref: ${{ steps.refs.outputs.platform_ref }}
           path: js-poc-csoc-platform-apis
       - name: Check out fleet
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           repository: jayadeyemi/js-poc-csoc-fleet
+          ref: ${{ steps.refs.outputs.fleet_ref }}
           path: js-poc-csoc-fleet
       - name: Check out app catalog
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           repository: jayadeyemi/js-poc-csoc-app-catalog
           path: js-poc-csoc-app-catalog
