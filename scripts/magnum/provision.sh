@@ -48,6 +48,11 @@ case "${CLUSTER_STATUS}" in
       log::success "Dry-run passed; cluster creation would use template ${MAGNUM_TEMPLATE_ID}"
       exit 0
     fi
+    STATE_DIR=$(dirname "${STATE_FILE}")
+    mkdir -p "${STATE_DIR}" \
+      || log::die "Cannot create Magnum ownership-state directory: ${STATE_DIR}"
+    [[ -w "${STATE_DIR}" ]] \
+      || log::die "Magnum ownership-state directory is not writable: ${STATE_DIR}"
     log::info "Creating cluster '${MAGNUM_CLUSTER_NAME}' ..."
 
     CLUSTER_ARGS=(
@@ -94,7 +99,6 @@ case "${CLUSTER_STATUS}" in
     [[ "${CREATE_FAILED}" == false ]] \
       || log::warn "Magnum accepted the cluster request despite the client error."
 
-    mkdir -p "$(dirname "${STATE_FILE}")"
     STATE_TMP=$(mktemp "${STATE_FILE}.tmp.XXXXXX")
     jq -n \
       --arg cluster_id "${CLUSTER_ID}" \
