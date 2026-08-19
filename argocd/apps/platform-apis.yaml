@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: csoc-platform-apis
+  namespace: argocd
+  annotations:
+    # RGDs must be deployed after KRO so KRO can compile them into CRDs
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  project: csoc-platform
+  source:
+    repoURL: https://github.com/jayadeyemi/js-poc-csoc-platform-apis
+    targetRevision: main
+    path: rgds
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kro-system
+  syncPolicy:
+    automated:
+      prune: false          # do not auto-delete RGDs — could stall live clusters
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

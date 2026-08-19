@@ -1,0 +1,62 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: capi-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  project: csoc-platform
+  source:
+    repoURL: https://kubernetes-sigs.github.io/cluster-api-operator
+    chart: cluster-api-operator
+    targetRevision: "0.28.0"
+    helm:
+      releaseName: capi-operator
+      values: |
+        core:
+          cluster-api:
+            namespace: capi-system
+            version: v1.12.11
+            createNamespace: true
+            manager:
+              featureGates:
+                ClusterTopology: true
+                ClusterResourceSet: true
+        bootstrap:
+          kubeadm:
+            namespace: capi-kubeadm-bootstrap-system
+            version: v1.12.11
+            createNamespace: true
+        controlPlane:
+          kubeadm:
+            namespace: capi-kubeadm-control-plane-system
+            version: v1.12.11
+            createNamespace: true
+        infrastructure:
+          openstack:
+            namespace: capo-system
+            version: v0.14.7
+            createNamespace: true
+        addon:
+          helm:
+            namespace: caaph-system
+            version: v0.6.2
+            createNamespace: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: capi-operator-system
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 3

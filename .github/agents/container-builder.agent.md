@@ -1,5 +1,5 @@
 ---
-description: "Management container subagent. Use when: building the Jetstream2 management Docker image, running the management container interactively, troubleshooting the Dockerfile or entrypoint, updating pinned tool versions (kubectl, clusterctl, helm, yq), resolving credential mount issues with the container."
+description: "Management container subagent. Use when: building the Jetstream2 management Docker image, running the management container interactively, troubleshooting the Dockerfile or entrypoint, updating pinned tool versions, resolving credential mount issues with the container."
 name: "Container Builder"
 tools: [execute, read, edit, search]
 user-invocable: false

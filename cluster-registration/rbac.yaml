@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cluster-registration
+  namespace: cluster-registration
+---
+# Discover SpokeCluster objects across namespaces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-registration
+rules:
+  - apiGroups: [csoc.js2.org]
+    resources: [spokeclusters]
+    verbs: [get, list, watch]
+  - apiGroups: [cluster.x-k8s.io]
+    resources: [clusters]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-registration
+subjects:
+  - kind: ServiceAccount
+    name: cluster-registration
+    namespace: cluster-registration
+roleRef:
+  kind: ClusterRole
+  name: cluster-registration
+  apiGroup: rbac.authorization.k8s.io
+---
+# Read CAPI kubeconfig secrets only in the spoke namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cluster-registration-kubeconfigs
+  namespace: spokeclusters
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cluster-registration-kubeconfigs
+  namespace: spokeclusters
+subjects:
+  - kind: ServiceAccount
+    name: cluster-registration
+    namespace: cluster-registration
+roleRef:
+  kind: Role
+  name: cluster-registration-kubeconfigs
+  apiGroup: rbac.authorization.k8s.io
+---
+# Write Argo CD cluster secrets in the argocd namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cluster-registration-argocd
+  namespace: argocd
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, create, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cluster-registration-argocd
+  namespace: argocd
+subjects:
+  - kind: ServiceAccount
+    name: cluster-registration
+    namespace: cluster-registration
+roleRef:
+  kind: Role
+  name: cluster-registration-argocd
+  apiGroup: rbac.authorization.k8s.io

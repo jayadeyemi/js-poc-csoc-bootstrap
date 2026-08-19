@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kro
+  namespace: argocd
+  annotations:
+    # Install KRO before anything that depends on its CRDs
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  project: csoc-platform
+  source:
+    chart: kro
+    repoURL: registry.k8s.io/kro/charts
+    targetRevision: "0.9.3"
+    helm:
+      releaseName: kro
+      values: |
+        replicaCount: 1
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kro-system
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

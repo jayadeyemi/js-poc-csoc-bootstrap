@@ -6,6 +6,8 @@ credentials/*.yaml
 credentials/*.env
 .env
 *.env
+!versions.env
+!iac/magnum/cluster.env
 !credentials/clouds.yaml.example
 !credentials/README.md
 
@@ -15,7 +17,11 @@ credentials/*.env
 kubeconfig
 
 # Rendered/generated CAPI manifests
-iac/capi/clusters/**/generated/
+
+# Bootstrap ownership state and staging files
+.state/
+*.tmp
+*.bak.*
 
 # Python / tool caches
 __pycache__/

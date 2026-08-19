@@ -1,14 +1,13 @@
 ---
 applyTo: "**"
 ---
-# Jetstream2 CSOC Project
+# Jetstream2 CSOC — bootstrap repo
 
-This workspace provisions Kubernetes infrastructure on the Indiana University **Jetstream2** OpenStack cloud using:
+Full reference: [AGENTS.md](../../AGENTS.md) · Four repos: `js-poc-csoc-bootstrap` / `js-poc-csoc-platform-apis` / `js-poc-csoc-fleet` / `js-poc-csoc-app-catalog` at `github.com/jayadeyemi/`
 
-- **OpenStack Magnum** — management Kubernetes cluster
-- **Cluster API + CAPO** — workload cluster lifecycle management
+**Day-2 cluster operations belong in `js-poc-csoc-fleet`**, not in scripts here.
 
-## Core conventions
+## Conventions
 
 ### Bash scripts
 - All scripts begin with `set -euo pipefail`.
@@ -29,10 +28,21 @@ This workspace provisions Kubernetes infrastructure on the Indiana University **
 - The container mounts `credentials/clouds.yaml` read-only.
 - CAPO reads from the `openstack-cloud-config` secret in `capo-system`.
 
-### New workload clusters
-1. Copy `iac/capi/clusters/example-cluster/` to a new directory.
-2. Edit `values.env` with cluster-specific parameters.
-3. Run `make capi-cluster CLUSTER_DIR=iac/capi/clusters/<new-name>`.
+### New workload clusters (day-2 GitOps)
+1. Add `customers/<tenant>/<env>/cluster.yaml` (a `SpokeCluster` CR) to `js-poc-csoc-fleet`.
+2. Open a PR — Argo CD applies it, KRO reconciles it → CAPI → Jetstream2 cluster.
+3. There is no direct CAPI provisioning script; CAPI/CAPO lifecycle belongs to
+   Argo CD and CAPI Operator.
+
+### KRO RGDs
+- `SpokeCluster` RGD lives in `js-poc-csoc-platform-apis/rgds/spoke-cluster.rgd.yaml`.
+- Never rename or remove existing `spec` fields — that creates a new immutable `GraphRevision`.
+- Add new fields as optional with defaults.
+
+### Argo CD
+- All Applications must descend from `argocd/app-of-apps.yaml` — never apply orphan Applications.
+- AppProjects must restrict `sourceRepos`, `destinations`, and `clusterResourceWhitelist`.
+- Cluster labels follow `csoc.js2.org/<key>: <value>`.
 
 ### Make targets
 Always use `make` targets for standard operations. Run `make help` to see all available targets.

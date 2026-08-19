@@ -58,12 +58,24 @@ k8s::wait_capi_cluster() {
 k8s::merge_kubeconfig() {
   local new_cfg=$1
   local base_cfg="${KUBECONFIG:-${HOME}/.kube/config}"
+  local base_dir merged_cfg backup_cfg
+  base_dir=$(dirname "${base_cfg}")
+  mkdir -p "${base_dir}"
+  chmod 700 "${base_dir}"
+  merged_cfg=$(mktemp "${base_dir}/.kubeconfig-merge.XXXXXX")
+  trap 'rm -f -- "${merged_cfg}"' RETURN
+
   if [[ -f "${base_cfg}" ]]; then
-    KUBECONFIG="${base_cfg}:${new_cfg}" kubectl config view --flatten > /tmp/kube_merged \
-      && mv /tmp/kube_merged "${base_cfg}"
+    backup_cfg="${base_cfg}.bak.$(date -u +'%Y%m%dT%H%M%SZ')"
+    cp -p "${base_cfg}" "${backup_cfg}"
+    chmod 600 "${backup_cfg}"
+    KUBECONFIG="${base_cfg}:${new_cfg}" kubectl config view --flatten --raw >"${merged_cfg}"
   else
-    cp "${new_cfg}" "${base_cfg}"
-    chmod 600 "${base_cfg}"
+    kubectl --kubeconfig="${new_cfg}" config view --flatten --raw >"${merged_cfg}"
   fi
+  kubectl --kubeconfig="${merged_cfg}" config get-contexts >/dev/null
+  chmod 600 "${merged_cfg}"
+  mv "${merged_cfg}" "${base_cfg}"
+  trap - RETURN
   log::success "Kubeconfig merged into ${base_cfg}"
 }

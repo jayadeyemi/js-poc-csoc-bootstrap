@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: spoke-apps-hello-csoc
+  namespace: argocd
+spec:
+  goTemplate: true
+  # Targets spokes that have explicitly opted in to the hello-csoc app
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            csoc.js2.org/type: spoke
+            csoc.js2.org/hello-csoc: enabled
+  template:
+    metadata:
+      name: "{{.name}}-hello-csoc"
+      annotations:
+        argocd.argoproj.io/sync-wave: "10"
+    spec:
+      project: csoc-baseline
+      source:
+        repoURL: https://github.com/jayadeyemi/js-poc-csoc-app-catalog
+        targetRevision: main
+        path: hello-csoc
+      destination:
+        server: "{{.server}}"
+        namespace: hello-csoc
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

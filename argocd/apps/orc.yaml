@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: openstack-resource-controller
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-30"
+spec:
+  project: csoc-platform
+  source:
+    repoURL: https://github.com/k-orc/openstack-resource-controller
+    targetRevision: v2.6.0
+    path: dist
+    directory:
+      include: install.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: orc-system
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

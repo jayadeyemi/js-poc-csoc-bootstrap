@@ -12,12 +12,14 @@ source "${REPO_ROOT}/iac/magnum/cluster.env"
 TARGET_STATUS="${1:-CREATE_COMPLETE}"
 TIMEOUT="${MAGNUM_WAIT_TIMEOUT:-1800}"   # seconds
 INTERVAL=30
+STATE_FILE="${MAGNUM_STATE_FILE:-${REPO_ROOT}/.state/magnum-cluster.json}"
+CLUSTER_ID=$(os::verify_owned_cluster "${STATE_FILE}" "${MAGNUM_CLUSTER_NAME}")
 
-log::info "Waiting for cluster '${MAGNUM_CLUSTER_NAME}' → ${TARGET_STATUS} (timeout ${TIMEOUT}s)"
+log::info "Waiting for owned cluster ${CLUSTER_ID} → ${TARGET_STATUS} (timeout ${TIMEOUT}s)"
 
 elapsed=0
 while (( elapsed < TIMEOUT )); do
-  status=$(os::cluster_status "${MAGNUM_CLUSTER_NAME}")
+  status=$(os::cluster_status "${CLUSTER_ID}")
 
   case "${status}" in
     "${TARGET_STATUS}")
@@ -28,7 +30,7 @@ while (( elapsed < TIMEOUT )); do
       log::die "Cluster entered failed state: ${status}"
       ;;
     NOT_FOUND)
-      log::die "Cluster '${MAGNUM_CLUSTER_NAME}' not found. Run 'make magnum-provision' first."
+      log::die "Owned cluster '${CLUSTER_ID}' not found. Inspect ${STATE_FILE}."
       ;;
     *)
       log::info "Current status: ${status} — waiting ${INTERVAL}s ..."

@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: spoke-baseline
+  namespace: argocd
+spec:
+  goTemplate: true
+  # Generates one Application per registered spoke cluster
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            csoc.js2.org/type: spoke
+  template:
+    metadata:
+      name: "{{.name}}-baseline"
+      annotations:
+        argocd.argoproj.io/sync-wave: "5"
+    spec:
+      project: csoc-baseline
+      source:
+        repoURL: https://github.com/jayadeyemi/js-poc-csoc-app-catalog
+        targetRevision: main
+        path: baseline
+      destination:
+        server: "{{.server}}"
+        namespace: csoc-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
