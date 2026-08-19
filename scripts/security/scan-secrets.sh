@@ -12,12 +12,17 @@ PATTERN='(-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|github_pat_[A-Za-z0-9_
 
 if rg --hidden --line-number --pcre2 "${PATTERN}" \
   -g '!.git/**' \
-  -g '!credentials/**' \
+  -g '!credentials/clouds.yaml' \
+  -g '!credentials/magnum-clouds.yaml' \
+  -g '!credentials/runtime-clouds.yaml' \
+  -g '!credentials/*.pem' \
   -g '!scripts/security/scan-secrets.sh' .; then
   log::die "Potential credential material found in publishable files"
 fi
 
-git check-ignore -q credentials/clouds.yaml \
-  || log::die "credentials/clouds.yaml is not ignored"
+for credential_file in credentials/magnum-clouds.yaml credentials/runtime-clouds.yaml; do
+  git check-ignore -q "${credential_file}" \
+    || log::die "${credential_file} is not ignored"
+done
 
 log::success "Repository secret scan passed"

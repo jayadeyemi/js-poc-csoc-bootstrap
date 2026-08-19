@@ -12,6 +12,7 @@ export OS_CLOUD
 	validate security-scan preflight \
 	container-build container-run \
 	magnum-templates magnum-provision magnum-wait magnum-kubeconfig \
+	magnum-diagnose magnum-verify magnum-verify-autoscaling \
 	capi-secret \
 	argocd-install argocd-bootstrap argocd-status \
 	bootstrap
@@ -48,6 +49,15 @@ magnum-wait: ## Wait for the Magnum cluster to become active
 
 magnum-kubeconfig: ## Fetch and merge the Magnum cluster kubeconfig
 	bash scripts/magnum/kubeconfig.sh
+
+magnum-diagnose: ## Capture a redacted read-only Magnum support bundle
+	bash scripts/magnum/diagnose.sh
+
+magnum-verify: ## Verify guide-exact management-cluster readiness
+	bash scripts/magnum/verify.sh
+
+magnum-verify-autoscaling: ## Exercise management workers within bounds
+	bash scripts/magnum/verify-autoscaling.sh
 
 # ── CAPI ──────────────────────────────────────────────────────────────────────
 capi-secret: ## Create/update the OpenStack cloud secret for CAPO

@@ -127,4 +127,7 @@ helm template cinder-csi openstack-cinder-csi \
   --namespace kube-system \
   --values "${render_dir}/cindercsi-values.yaml" >/dev/null
 
+log::step 5 "Running local Magnum lifecycle regression tests"
+bash "${REPO_ROOT}/tests/magnum/run.sh"
+
 log::success "All non-destructive validation checks passed."

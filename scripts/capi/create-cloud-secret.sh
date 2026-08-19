@@ -6,17 +6,25 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 source "${REPO_ROOT}/scripts/lib/logging.sh"
 source "${REPO_ROOT}/scripts/lib/k8s.sh"
+source "${REPO_ROOT}/scripts/lib/credentials.sh"
+source "${REPO_ROOT}/iac/magnum/cluster.env"
 
-# Resolve clouds.yaml using the same precedence as the container launcher.
-if [[ -n "${CLOUDS_YAML:-}" ]]; then
-  RESOLVED_CLOUDS_YAML="${CLOUDS_YAML}"
-elif [[ -f "${REPO_ROOT}/credentials/clouds.yaml" ]]; then
-  RESOLVED_CLOUDS_YAML="${REPO_ROOT}/credentials/clouds.yaml"
+# Resolve only the restricted runtime credential.
+if [[ -n "${RUNTIME_CLOUDS_YAML:-}" ]]; then
+  RESOLVED_CLOUDS_YAML="${RUNTIME_CLOUDS_YAML}"
+elif [[ -f "${REPO_ROOT}/credentials/runtime-clouds.yaml" ]]; then
+  RESOLVED_CLOUDS_YAML="${REPO_ROOT}/credentials/runtime-clouds.yaml"
 else
-  RESOLVED_CLOUDS_YAML="${HOME}/.config/openstack/clouds.yaml"
+  RESOLVED_CLOUDS_YAML="${HOME}/.config/openstack/runtime-clouds.yaml"
 fi
 [[ -f "${RESOLVED_CLOUDS_YAML}" ]] \
-  || log::die "clouds.yaml not found at ${RESOLVED_CLOUDS_YAML}. Set CLOUDS_YAML."
+  || log::die "Restricted runtime clouds.yaml not found at ${RESOLVED_CLOUDS_YAML}. Set RUNTIME_CLOUDS_YAML."
+credentials::require_private_file "${RESOLVED_CLOUDS_YAML}" Runtime
+RUNTIME_CREDENTIAL_JSON=$(credentials::metadata "${RESOLVED_CLOUDS_YAML}" "${OS_CLOUD:-openstack}")
+credentials::require_unexpired "${RUNTIME_CREDENTIAL_JSON}" Runtime
+[[ $(jq -r '.project_id' <<<"${RUNTIME_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" \
+   && $(jq -r '.unrestricted' <<<"${RUNTIME_CREDENTIAL_JSON}") == false ]] \
+  || log::die "Runtime credential must be restricted and scoped to ${MAGNUM_PROJECT_ID}"
 
 SECRET_NAMESPACE="${CAPO_SECRET_NAMESPACE:-capo-system}"
 WORKLOAD_SECRET_NAMESPACE="${WORKLOAD_SECRET_NAMESPACE:-spokeclusters}"

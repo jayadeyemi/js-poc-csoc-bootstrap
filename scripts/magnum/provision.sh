@@ -7,11 +7,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 source "${REPO_ROOT}/scripts/lib/logging.sh"
 source "${REPO_ROOT}/scripts/lib/openstack.sh"
+source "${REPO_ROOT}/scripts/lib/credentials.sh"
 
 CLUSTER_ENV="${REPO_ROOT}/iac/magnum/cluster.env"
 [[ -f "${CLUSTER_ENV}" ]] || log::die "Cluster env file not found: ${CLUSTER_ENV}"
 # shellcheck source=iac/magnum/cluster.env
 source "${CLUSTER_ENV}"
+credentials::configure_magnum
 
 STATE_FILE="${MAGNUM_STATE_FILE:-${REPO_ROOT}/.state/magnum-cluster.json}"
 DRY_RUN=false
@@ -62,10 +64,17 @@ case "${CLUSTER_STATUS}" in
       --master-flavor    "${MAGNUM_MASTER_FLAVOR}"
       --flavor           "${MAGNUM_WORKER_FLAVOR}"
       --keypair          "${MAGNUM_KEYPAIR}"
+      --fixed-network    "${MAGNUM_FIXED_NETWORK}"
+      --fixed-subnet     "${MAGNUM_FIXED_SUBNET}"
+      --floating-ip-enabled
+      --master-lb-enabled
+      --merge-labels
+      --labels           "boot_volume_size=${MAGNUM_BOOT_VOLUME_SIZE}"
+      --labels           "auto_scaling_enabled=${MAGNUM_AUTO_SCALING_ENABLED}"
+      --labels           "min_node_count=${MAGNUM_MIN_NODE_COUNT}"
+      --labels           "max_node_count=${MAGNUM_MAX_NODE_COUNT}"
+      --timeout          60
     )
-
-    [[ -n "${MAGNUM_FIXED_NETWORK}" ]] && CLUSTER_ARGS+=(--fixed-network "${MAGNUM_FIXED_NETWORK}")
-    [[ -n "${MAGNUM_FIXED_SUBNET}" ]]  && CLUSTER_ARGS+=(--fixed-subnet  "${MAGNUM_FIXED_SUBNET}")
 
     CREATE_OUTPUT=""
     CREATE_FAILED=false

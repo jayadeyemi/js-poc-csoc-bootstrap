@@ -2,18 +2,20 @@
 # Container entrypoint: validates credentials are present, then executes the given command.
 set -euo pipefail
 
-CLOUDS_YAML="${HOME}/.config/openstack/clouds.yaml"
+MAGNUM_FILE="${MAGNUM_CLOUDS_YAML:-}"
+RUNTIME_FILE="${RUNTIME_CLOUDS_YAML:-}"
 
-if [[ ! -f "${CLOUDS_YAML}" ]]; then
+if [[ -z "${MAGNUM_FILE}" || ! -f "${MAGNUM_FILE}" \
+   || -z "${RUNTIME_FILE}" || ! -f "${RUNTIME_FILE}" ]]; then
   cat >&2 <<'EOF'
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-WARNING: clouds.yaml not found at expected path:
-  /home/jetstream/.config/openstack/clouds.yaml
+WARNING: separated Magnum and runtime clouds.yaml files were not mounted.
 
-Mount your credentials directory when running the container.
+Use scripts/container/run.sh to mount both credential files read-only.
 See credentials/README.md for instructions.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EOF
 fi
 
+export SHELL="${SHELL:-/bin/bash}"
 exec "$@"

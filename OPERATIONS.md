@@ -1,8 +1,10 @@
 # Operations and recovery
 
 All commands run from `js-poc-csoc-bootstrap` inside the pinned management
-container. Live cluster creation is allowed only after `make validate`,
-`make security-scan`, and `make preflight` pass.
+container. `make bootstrap` builds the image on the host and invokes the inner
+pipeline non-interactively. Live cluster creation is allowed only after local
+`make validate`, `make security-scan`, and `make preflight` pass; GitHub Actions
+is not a deployment gate.
 
 ## Resume or repeat bootstrap
 
@@ -18,6 +20,20 @@ stack, and Git history before authorizing an explicit recovery operation.
 Kubeconfig merges make a timestamped `0600` backup beside the destination.
 Restore the most recent backup only after checking its contexts with
 `kubectl --kubeconfig <backup> config get-contexts`.
+
+## Magnum health and support evidence
+
+Creation succeeds only when Magnum is complete and reports `HEALTHY`. After 20
+minutes without workers, `magnum-wait` writes a redacted bundle under
+`.state/diagnostics/` and continues the original request. It never submits a
+duplicate create.
+
+Use `make magnum-diagnose` for the cluster record, node groups, servers, and
+load balancers. If the API is reachable but the control plane is NotReady and
+Calico/CCM objects are absent, preserve provider ownership: do not install a
+second CNI, remove finalizers, or edit provider-side CAPI objects. Give
+Jetstream2 support the owned UUID, stack ID, API address, health, update time,
+and diagnostic bundle.
 
 ## Controller recovery
 
@@ -37,7 +53,7 @@ provider CRDs or generated CAPI objects.
 ## Rotate OpenStack application credentials
 
 1. Create a new restricted application credential in Jetstream2.
-2. Replace the ignored `credentials/clouds.yaml` atomically and keep mode
+2. Replace the ignored `credentials/runtime-clouds.yaml` atomically and keep mode
    `0600`.
 3. Run `make preflight` with the new credential.
 4. Run `make capi-secret`. This updates the CAPO secret and the reconciled
@@ -65,3 +81,13 @@ Deleting a fleet `SpokeCluster`, a CAPI `Cluster`, or the Magnum management
 cluster can delete cloud infrastructure and data. Cleanup is never automatic:
 record the exact resource UUIDs, backups, tenant approval, and an OpenStack
 inventory diff in a reviewed change before issuing any delete operation.
+
+For a reviewed Magnum deletion, run
+`scripts/magnum/delete-owned.sh <reviewed-uuid>`. The argument must match
+`.state/magnum-cluster.json`; the script captures diagnostics, sends exactly
+one delete request, waits up to 30 minutes, stops on `DELETE_FAILED`, and removes
+ownership state only after the record disappears. If the first watcher times
+out while the record is still `DELETE_IN_PROGRESS`, running the same exact-UUID
+command resumes polling without sending another delete request. It also clears
+state safely if the reviewed record disappeared after the previous watcher
+stopped. Never resend a stalled delete manually or remove Kubernetes finalizers.

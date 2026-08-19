@@ -7,13 +7,16 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 source "${REPO_ROOT}/scripts/lib/logging.sh"
 source "${REPO_ROOT}/scripts/lib/openstack.sh"
 source "${REPO_ROOT}/scripts/lib/k8s.sh"
+source "${REPO_ROOT}/scripts/lib/credentials.sh"
 
 source "${REPO_ROOT}/iac/magnum/cluster.env"
 
-KUBECONFIG_DIR="${HOME}/.kube"
+KUBECONFIG_DIR="${MAGNUM_KUBECONFIG_DIR:-${HOME}/.kube}"
 KUBECONFIG_FILE="${KUBECONFIG_DIR}/${MAGNUM_CLUSTER_NAME}.yaml"
 STATE_FILE="${MAGNUM_STATE_FILE:-${REPO_ROOT}/.state/magnum-cluster.json}"
+credentials::configure_magnum
 CLUSTER_ID=$(os::verify_owned_cluster "${STATE_FILE}" "${MAGNUM_CLUSTER_NAME}")
+export SHELL="${SHELL:-/bin/bash}"
 
 log::step 1 "Verifying cluster is active"
 status=$(os::cluster_status "${CLUSTER_ID}")
@@ -30,13 +33,10 @@ trap cleanup EXIT
 
 log::step 2 "Fetching kubeconfig → ${KUBECONFIG_FILE}"
 openstack coe cluster config "${CLUSTER_ID}" \
-  --use-keyring \
+  --use-certificate \
   --output-certs \
   --force \
-  --dir "${STAGING_DIR}" 2>/dev/null \
-  || openstack coe cluster config "${CLUSTER_ID}" \
-       --force \
-       --dir "${STAGING_DIR}"
+  --dir "${STAGING_DIR}"
 
 FETCHED_CONFIG=$(find "${STAGING_DIR}" -maxdepth 1 -type f \
   \( -name config -o -name '*.yaml' -o -name '*.conf' \) -print -quit)

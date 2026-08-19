@@ -8,7 +8,8 @@ credentials/*.env
 *.env
 !versions.env
 !iac/magnum/cluster.env
-!credentials/clouds.yaml.example
+!credentials/magnum-clouds.yaml.example
+!credentials/runtime-clouds.yaml.example
 !credentials/README.md
 
 # Kubeconfig files produced by scripts

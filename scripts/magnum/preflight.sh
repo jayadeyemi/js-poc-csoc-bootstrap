@@ -6,35 +6,48 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 source "${REPO_ROOT}/scripts/lib/logging.sh"
 source "${REPO_ROOT}/scripts/lib/openstack.sh"
+source "${REPO_ROOT}/scripts/lib/credentials.sh"
 source "${REPO_ROOT}/iac/magnum/cluster.env"
 
 STATE_FILE="${MAGNUM_STATE_FILE:-${REPO_ROOT}/.state/magnum-cluster.json}"
+STATE_DIR=$(dirname "${STATE_FILE}")
+KUBECONFIG_DIR="${MAGNUM_KUBECONFIG_DIR:-${HOME}/.kube}"
+MAGNUM_CREDENTIAL_FILE=$(credentials::magnum_file)
+RUNTIME_CREDENTIAL_FILE=$(credentials::runtime_file)
 
 for required_command in openstack jq; do
   command -v "${required_command}" >/dev/null 2>&1 \
     || log::die "Required command not found: ${required_command}"
 done
 
-log::step 1 "Checking OpenStack authentication"
-os::auth_check
+log::step 1 "Checking separated OpenStack credentials and local state paths"
+credentials::require_private_file "${MAGNUM_CREDENTIAL_FILE}" Magnum
+credentials::require_private_file "${RUNTIME_CREDENTIAL_FILE}" Runtime
+MAGNUM_CREDENTIAL_JSON=$(credentials::metadata "${MAGNUM_CREDENTIAL_FILE}" "${OS_CLOUD}")
+RUNTIME_CREDENTIAL_JSON=$(credentials::metadata "${RUNTIME_CREDENTIAL_FILE}" "${OS_CLOUD}")
+credentials::require_unexpired "${MAGNUM_CREDENTIAL_JSON}" Magnum
+credentials::require_unexpired "${RUNTIME_CREDENTIAL_JSON}" Runtime
+[[ $(jq -r '.project_id' <<<"${MAGNUM_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" \
+   && $(jq -r '.app_project_id' <<<"${MAGNUM_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" ]] \
+  || log::die "Magnum credential is not scoped to expected project ${MAGNUM_PROJECT_ID}"
+[[ $(jq -r '.project_id' <<<"${RUNTIME_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" \
+   && $(jq -r '.app_project_id' <<<"${RUNTIME_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" ]] \
+  || log::die "Runtime credential is not scoped to expected project ${MAGNUM_PROJECT_ID}"
+[[ $(jq -r '.unrestricted' <<<"${MAGNUM_CREDENTIAL_JSON}") == true ]] \
+  || log::die "Magnum application credential must be unrestricted for trustee/trust creation"
+[[ $(jq -r '.unrestricted' <<<"${RUNTIME_CREDENTIAL_JSON}") == false ]] \
+  || log::die "Runtime CAPO/workload application credential must be restricted"
+[[ $(jq -r '.id' <<<"${MAGNUM_CREDENTIAL_JSON}") != \
+   $(jq -r '.id' <<<"${RUNTIME_CREDENTIAL_JSON}") ]] \
+  || log::die "Magnum and runtime credentials must be distinct"
+mkdir -p "${STATE_DIR}" "${KUBECONFIG_DIR}"
+chmod 700 "${STATE_DIR}" "${KUBECONFIG_DIR}"
+[[ -w "${STATE_DIR}" && -w "${KUBECONFIG_DIR}" ]] \
+  || log::die "State and kubeconfig directories must be writable"
+credentials::configure_magnum
 PROJECT_ID=$(openstack token issue -f value -c project_id)
-[[ -n "${PROJECT_ID}" ]] || log::die "Authenticated token has no project ID"
-
-AUTH_CONFIG_JSON=$(openstack configuration show -f json)
-AUTH_TYPE=$(jq -r '.auth_type // ""' <<<"${AUTH_CONFIG_JSON}")
-if [[ "${AUTH_TYPE}" == *applicationcredential* ]]; then
-  APPLICATION_CREDENTIAL_ID=$(jq -r '."auth.application_credential_id" // ""' \
-    <<<"${AUTH_CONFIG_JSON}")
-  [[ -n "${APPLICATION_CREDENTIAL_ID}" ]] \
-    || log::die "Application-credential authentication has no credential ID"
-  APPLICATION_CREDENTIAL_JSON=$(openstack application credential show \
-    "${APPLICATION_CREDENTIAL_ID}" -f json) \
-    || log::die "Unable to inspect the active application credential"
-  APPLICATION_CREDENTIAL_UNRESTRICTED=$(jq -r \
-    '.Unrestricted // .unrestricted // false' <<<"${APPLICATION_CREDENTIAL_JSON}")
-  [[ "${APPLICATION_CREDENTIAL_UNRESTRICTED}" == true ]] \
-    || log::die "The active application credential is restricted and cannot create the Magnum trustee/trust. Use password/OIDC authentication or a provider-approved credential that permits trust creation."
-fi
+[[ "${PROJECT_ID}" == "${MAGNUM_PROJECT_ID}" ]] \
+  || log::die "Authenticated project changed during preflight"
 
 log::step 2 "Validating provider-owned Magnum template"
 TEMPLATE_JSON=$(openstack coe cluster template show "${MAGNUM_TEMPLATE_ID}" -f json) \
@@ -49,18 +62,37 @@ TEMPLATE_JSON=$(openstack coe cluster template show "${MAGNUM_TEMPLATE_ID}" -f j
   || log::die "Selected Magnum template is hidden"
 [[ $(jq -r '.coe' <<<"${TEMPLATE_JSON}") == "kubernetes" ]] \
   || log::die "Selected template is not a Kubernetes template"
+[[ $(jq -r '.network_driver' <<<"${TEMPLATE_JSON}") == "calico" ]] \
+  || log::die "Selected template does not use the required Calico network driver"
 
 IMAGE_NAME=$(jq -r '.image_id' <<<"${TEMPLATE_JSON}")
 IMAGE_JSON=$(openstack image show "${IMAGE_NAME}" -f json) \
   || log::die "Template image is unavailable: ${IMAGE_NAME}"
 [[ $(jq -r '.status' <<<"${IMAGE_JSON}") == "active" ]] \
   || log::die "Template image is not active: ${IMAGE_NAME}"
+[[ $(jq -r '.id' <<<"${IMAGE_JSON}") == "${MAGNUM_IMAGE_ID}" \
+   && $(jq -r '.name' <<<"${IMAGE_JSON}") == "${MAGNUM_IMAGE_NAME}" ]] \
+  || log::die "Template no longer resolves to expected image ${MAGNUM_IMAGE_NAME} (${MAGNUM_IMAGE_ID})"
 
 log::step 3 "Validating network, flavors, keypair, and load balancer service"
+[[ "${MAGNUM_FLOATING_IP_ENABLED}" == true && "${MAGNUM_MASTER_LB_ENABLED}" == true ]] \
+  || log::die "Guide-exact provisioning requires a floating IP and master load balancer"
 NETWORK_JSON=$(openstack network show "${MAGNUM_EXTERNAL_NETWORK}" -f json) \
   || log::die "External network is unavailable: ${MAGNUM_EXTERNAL_NETWORK}"
 [[ $(jq -r '."router:external"' <<<"${NETWORK_JSON}") == "true" ]] \
   || log::die "Network is not external: ${MAGNUM_EXTERNAL_NETWORK}"
+[[ $(jq -r '.id' <<<"${NETWORK_JSON}") == "${MAGNUM_EXTERNAL_NETWORK_ID}" ]] \
+  || log::die "External network UUID changed"
+FIXED_NETWORK_JSON=$(openstack network show "${MAGNUM_FIXED_NETWORK}" -f json) \
+  || log::die "Fixed network is unavailable: ${MAGNUM_FIXED_NETWORK}"
+FIXED_SUBNET_JSON=$(openstack subnet show "${MAGNUM_FIXED_SUBNET}" -f json) \
+  || log::die "Fixed subnet is unavailable: ${MAGNUM_FIXED_SUBNET}"
+[[ $(jq -r '.id' <<<"${FIXED_NETWORK_JSON}") == "${MAGNUM_FIXED_NETWORK_ID}" ]] \
+  || log::die "Fixed network UUID changed"
+[[ $(jq -r '.id' <<<"${FIXED_SUBNET_JSON}") == "${MAGNUM_FIXED_SUBNET_ID}" \
+   && $(jq -r '.network_id' <<<"${FIXED_SUBNET_JSON}") == "${MAGNUM_FIXED_NETWORK_ID}" \
+   && $(jq -r '.ip_version' <<<"${FIXED_SUBNET_JSON}") == 4 ]] \
+  || log::die "Fixed subnet no longer matches the expected IPv4 network"
 MASTER_FLAVOR_JSON=$(openstack flavor show "${MAGNUM_MASTER_FLAVOR}" -f json 2>/dev/null) \
   || log::die "Master flavor is unavailable: ${MAGNUM_MASTER_FLAVOR}"
 WORKER_FLAVOR_JSON=$(openstack flavor show "${MAGNUM_WORKER_FLAVOR}" -f json 2>/dev/null) \
@@ -120,6 +152,12 @@ check_headroom routers 1 "$(resource_count router)" "$(quota_limit routers)"
 check_headroom ports "$((required_instances + 5))" "$(resource_count port)" "$(quota_limit ports)"
 check_headroom floating-ips 1 "$(resource_count floating ip)" "$(quota_limit floating_ips)"
 check_headroom security-groups 2 "$(resource_count security group)" "$(quota_limit security_groups)"
+VOLUME_SUMMARY_JSON=$(openstack volume summary -f json)
+used_volumes=$(jq -er '."Total Count" // .total_count' <<<"${VOLUME_SUMMARY_JSON}")
+used_gigabytes=$(jq -er '."Total Size" // .total_size' <<<"${VOLUME_SUMMARY_JSON}")
+check_headroom volumes "${required_instances}" "${used_volumes}" "$(quota_limit volumes)"
+check_headroom volume-gigabytes "$((required_instances * MAGNUM_BOOT_VOLUME_SIZE))" \
+  "${used_gigabytes}" "$(quota_limit gigabytes)"
 
 LB_QUOTA_JSON=$(openstack loadbalancer quota show "${PROJECT_ID}" -f json) \
   || log::die "Unable to read load-balancer quota"
