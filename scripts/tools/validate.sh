@@ -105,6 +105,9 @@ EXPECTED_WORKER_MAX='${string(schema.spec.kubernetes.maxNodes)}'
 [[ $(yq -r '.spec.resources[] | select(.id == "machinedeployment") | .template.metadata.annotations."cluster.x-k8s.io/cluster-api-autoscaler-node-group-max-size"' "${RGD}") \
    == "${EXPECTED_WORKER_MAX}" ]] \
   || log::die "Spoke MachineDeployment maximum autoscaling annotation is incorrect"
+[[ $(yq -r '.spec.resources[] | select(.id == "autoscalerrole") | .template.rules[] | select(.apiGroups[] == "cluster.x-k8s.io") | select(.resources[] == "machinedeployments/scale") | .verbs[]' "${RGD}" | sort -u | tr '\n' ' ') \
+   == *"patch "* ]] \
+  || log::die "Spoke autoscaler must be allowed to patch the MachineDeployment scale subresource"
 EXPECTED_NODE_CIDR='${schema.spec.network.nodeCIDR}'
 [[ $(yq -r '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.managedSubnets[0].cidr' "${RGD}") \
    == "${EXPECTED_NODE_CIDR}" ]] \
