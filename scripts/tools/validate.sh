@@ -56,6 +56,12 @@ APP_OF_APPS="${REPO_ROOT}/argocd/app-of-apps.yaml"
   || log::die "App-of-Apps source path must be spec.source.path"
 [[ $(yq -r '.spec.source.directory.path // ""' "${APP_OF_APPS}") == "" ]] \
   || log::die "App-of-Apps source path must not be nested under spec.source.directory"
+for application_file in "${REPO_ROOT}"/argocd/apps/*.yaml; do
+  if [[ $(yq -r '.spec.source.directory != null' "${application_file}") == true \
+     && $(yq -r '.spec.source.path // ""' "${application_file}") == "" ]]; then
+    log::die "Git directory Application is missing spec.source.path: ${application_file}"
+  fi
+done
 
 RGD="${WORKSPACE_ROOT}/js-poc-csoc-platform-apis/rgds/spoke-cluster.rgd.yaml"
 [[ $(yq -r '.spec.schema.apiVersion' "${RGD}") == v1alpha1 ]] \
