@@ -37,6 +37,8 @@ spec:
     - server: https://kubernetes.default.svc
       namespace: cert-manager
     - server: https://kubernetes.default.svc
+      namespace: kube-system
+    - server: https://kubernetes.default.svc
       namespace: caaph-system
     - server: https://kubernetes.default.svc
       namespace: orc-system
@@ -53,6 +55,10 @@ spec:
       kind: ValidatingAdmissionPolicy
     - group: admissionregistration.k8s.io
       kind: ValidatingAdmissionPolicyBinding
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
     - group: ""
       kind: Namespace
   namespaceResourceWhitelist:
