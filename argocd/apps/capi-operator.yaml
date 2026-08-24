@@ -19,9 +19,9 @@ spec:
             namespace: capi-system
             version: v1.12.11
             createNamespace: true
-        manager:
-          featureGates:
-            ClusterTopology: true
+            manager:
+              featureGates:
+                ClusterTopology: true
         bootstrap:
           kubeadm:
             namespace: capi-kubeadm-bootstrap-system
