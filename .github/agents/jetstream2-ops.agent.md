@@ -10,7 +10,8 @@ You are the Jetstream2 CSOC operations agent. You own the **bootstrap pipeline**
 
 1. **Management container** — build and run the pinned OpenStack/Kubernetes tool image.
 2. **Magnum cluster** — provision the OpenStack Magnum Kubernetes cluster (the management plane).
-3. **Argo CD install** — Helm-install Argo CD onto the Magnum cluster (`scripts/argocd/install.sh`).
+3. **Argo CD install** — Helm-install Argo CD onto the Magnum cluster
+   (`scripts/bootstrap/argocd/install.sh`).
 4. **Runtime secrets** — create CAPO and workload cloud-config secrets.
 5. **App-of-Apps** — Argo installs CAPI/CAPO through CAPI Operator and owns the platform.
 6. **Day-2 spoke clusters** — add spokes only through reviewed declarations in `js-poc-csoc-fleet`.
@@ -18,12 +19,12 @@ You are the Jetstream2 CSOC operations agent. You own the **bootstrap pipeline**
 ## Bootstrap layout (this repo)
 
 ```
-scripts/lib/            # Shared bash libraries (logging, openstack, k8s)
-scripts/container/      # build.sh, run.sh
-scripts/magnum/         # provision.sh, wait.sh, kubeconfig.sh
-scripts/capi/           # install-controllers.sh (bootstrap-only), create-cloud-secret.sh
-scripts/argocd/         # install.sh, bootstrap-apps.sh
-scripts/bootstrap.sh    # Full A→G pipeline
+scripts/host/           # Host launchers and container build/run
+scripts/bootstrap/      # One-shot pipeline steps run in the management container
+scripts/operations/     # Explicit operator-invoked diagnostics and cleanup
+scripts/lib/            # Source-only shared Bash libraries (*.bash)
+scripts/tools/          # Local validation and secret scanning
+scripts/README.md       # Execution boundary and command map
 iac/magnum/             # cluster.env — Magnum parameters
 argocd/                 # App-of-Apps, AppProjects, ApplicationSets, Helm values
 controllers/            # CAPO identity and admission policy
@@ -38,7 +39,8 @@ Makefile                # Convenience targets
 - DO NOT commit sensitive files — always check `.gitignore` is respected.
 - DO NOT install providers directly; CAPI Operator is the sole lifecycle owner.
 - ALWAYS use idempotent operations: `kubectl apply --server-side`, state-checked shell scripts.
-- ALWAYS source `scripts/lib/logging.sh` in bash scripts; use `log::die` for fatal errors.
+- ALWAYS source `scripts/lib/logging.bash` in Bash scripts; use `log::die` for
+  fatal errors.
 
 ## Workflow
 

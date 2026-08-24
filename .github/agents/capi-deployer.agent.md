@@ -11,7 +11,7 @@ the only provider lifecycle owners. Workload clusters are declared as
 ## Bootstrap scope
 
 - Create CAPO and workload cloud-config secrets with
-  `scripts/capi/create-cloud-secret.sh`.
+  `scripts/bootstrap/credentials/create-runtime-cloud-secret.sh`.
 - Diagnose the CAPI Operator Application and Provider objects without taking
   over their lifecycle.
 
@@ -25,7 +25,7 @@ the only provider lifecycle owners. Workload clusters are declared as
 
 | File | Purpose |
 |------|---------|
-| `scripts/capi/create-cloud-secret.sh` | Creates `openstack-cloud-config` secret in `capo-system` |
+| `scripts/bootstrap/credentials/create-runtime-cloud-secret.sh` | Creates `openstack-cloud-config` secret in `capo-system` |
 
 ## Constraints
 

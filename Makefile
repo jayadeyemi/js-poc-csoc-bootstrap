@@ -12,8 +12,9 @@ export OS_CLOUD
 	validate security-scan preflight \
 	container-build container-run \
 	magnum-templates magnum-provision magnum-wait magnum-kubeconfig \
+	magnum-configure-nodegroup magnum-diagnose magnum-verify magnum-verify-autoscaling \
 	capi-secret \
-	argocd-install argocd-bootstrap argocd-status \
+	argocd-install argocd-manual-smoke argocd-bootstrap argocd-status \
 	bootstrap
 
 help: ## Show available targets
@@ -21,48 +22,63 @@ help: ## Show available targets
 	  | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
 validate: ## Run non-destructive static validation
-	bash scripts/validate.sh
+	bash scripts/tools/validate.sh
 
 security-scan: ## Scan publishable files for credential material
-	bash scripts/security/scan-secrets.sh
+	bash scripts/tools/scan-secrets.sh
 
 preflight: ## Run read-only OpenStack and ownership checks
-	bash scripts/magnum/preflight.sh
+	bash scripts/bootstrap/magnum/preflight.sh
 
 # ── Container ────────────────────────────────────────────────────────────────
 container-build: ## Build the management container image
-	bash scripts/container/build.sh
+	bash scripts/host/container/build.sh
 
 container-run: ## Run the management container interactively
-	bash scripts/container/run.sh
+	bash scripts/host/container/run.sh
 
 # ── Magnum ────────────────────────────────────────────────────────────────────
 magnum-templates: ## Save a timestamped inventory of visible Magnum templates
-	bash scripts/magnum/inventory-templates.sh
+	bash scripts/operations/magnum/inventory-templates.sh
 
 magnum-provision: ## Idempotently provision the Magnum management cluster
-	bash scripts/magnum/provision.sh
+	bash scripts/bootstrap/magnum/provision.sh
 
 magnum-wait: ## Wait for the Magnum cluster to become active
-	bash scripts/magnum/wait.sh
+	bash scripts/bootstrap/magnum/wait.sh
+
+magnum-configure-nodegroup: ## Reconcile default worker API bounds after create
+	bash scripts/bootstrap/magnum/configure-nodegroup.sh
 
 magnum-kubeconfig: ## Fetch and merge the Magnum cluster kubeconfig
-	bash scripts/magnum/kubeconfig.sh
+	bash scripts/bootstrap/magnum/kubeconfig.sh
+
+magnum-diagnose: ## Capture a redacted read-only Magnum support bundle
+	bash scripts/operations/magnum/diagnose.sh
+
+magnum-verify: ## Verify guide-exact management-cluster readiness
+	bash scripts/bootstrap/magnum/verify.sh
+
+magnum-verify-autoscaling: ## Exercise management workers within bounds
+	bash scripts/bootstrap/magnum/verify-autoscaling.sh
 
 # ── CAPI ──────────────────────────────────────────────────────────────────────
 capi-secret: ## Create/update the OpenStack cloud secret for CAPO
-	bash scripts/capi/create-cloud-secret.sh
+	bash scripts/bootstrap/credentials/create-runtime-cloud-secret.sh
 
 # ── Argo CD ────────────────────────────────────────────────────────────────
 argocd-install: ## Install Argo CD via Helm on the management cluster
-	bash scripts/argocd/install.sh
+	bash scripts/bootstrap/argocd/install.sh
+
+argocd-manual-smoke: ## Manually validate manifests before Argo reconciliation
+	bash scripts/bootstrap/argocd/manual-smoke-test.sh
 
 argocd-bootstrap: ## Apply App-of-Apps and hand off cluster to GitOps
-	bash scripts/argocd/bootstrap-apps.sh
+	bash scripts/bootstrap/argocd/bootstrap-apps.sh
 
 argocd-status: ## Show all Argo CD Application sync status
 	kubectl get applications -n argocd
 
 # ── Full pipeline ────────────────────────────────────────────────────
 bootstrap: ## Full orchestration: container → Magnum → CAPI → Argo CD → GitOps
-	bash scripts/bootstrap.sh
+	bash scripts/host/bootstrap.sh

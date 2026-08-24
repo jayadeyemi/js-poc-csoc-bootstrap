@@ -10,7 +10,10 @@ make container-build       # build management container
 make bootstrap             # full pipeline A→G (idempotent)
 ```
 
-Run scripts inside the management container: `make container-run` mounts `credentials/` read-only and the repo at `/workspace`.
+`make bootstrap` builds the pinned image on the host and runs the inner pipeline
+non-interactively as the host UID/GID. `make container-run` mounts the two live
+credential files individually at `/run/csoc-credentials` read-only and mounts
+the workspace at `/workspace`.
 
 ## Bootstrap sequence
 
@@ -26,11 +29,12 @@ CAPI/CAPO installation and upgrades always remain declarative.
 ## Repo layout
 
 ```
-scripts/lib/         shared bash libs — source these, never echo directly
-scripts/magnum/      Magnum cluster lifecycle (unchanged after GitOps)
-scripts/capi/        CAPO/workload runtime secret creation only
-scripts/argocd/      install.sh + bootstrap-apps.sh (Steps F+G)
-scripts/container/   build.sh / run.sh
+scripts/host/        host-only Docker build/run and outer bootstrap
+scripts/bootstrap/   one-shot management-container pipeline
+scripts/operations/  explicit operator diagnostics, inventory, and deletion
+scripts/lib/         source-only `.bash` libraries; never execute directly
+scripts/tools/       local/container validation and secret scanning
+cluster-registration/ scripts and manifests executed inside the CSOC cluster
 container/           Dockerfile + entrypoint (non-root, no baked secrets)
 credentials/         .gitignored — see credentials/README.md
 iac/magnum/          cluster.env — Magnum parameters (no secrets)
@@ -41,7 +45,9 @@ cluster-registration/ spoke auto-registration controller
 
 ## Bash conventions
 
-- All scripts: `set -euo pipefail` + source `scripts/lib/logging.sh`
+- Executable Bash scripts: `set -euo pipefail` + source
+  `scripts/lib/logging.bash`
+- `scripts/lib/*.bash` files are source-only and are never executed directly
 - Idempotent: check state before acting (`os::resource_exists`, `k8s::namespace_exists`)
 - `SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"`
 - Lib functions: `log::info/warn/error/die/step`, `os::auth_check`, `k8s::apply`, `k8s::ensure_namespace`
@@ -49,7 +55,8 @@ cluster-registration/ spoke auto-registration controller
 
 ## Credentials
 
-- OpenStack: `v3applicationcredential` in `credentials/clouds.yaml` (never committed)
+- Magnum: short-lived unrestricted `credentials/magnum-clouds.yaml`
+- CAPO/workloads: distinct restricted `credentials/runtime-clouds.yaml`
 - CAPO: `openstack-cloud-config` in `capo-system`, plus a workload
   `cloud.conf` resource-set secret in `spokeclusters`
 - See [credentials/README.md](credentials/README.md)
@@ -75,5 +82,5 @@ cluster-registration/ spoke auto-registration controller
 
 - There is no direct CAPI installer or workload provisioning script; use a
   fleet PR and the Argo/KRO reconciliation path.
-- Never commit `credentials/clouds.yaml` — the `credentials/.gitignore` blocks the whole directory
+- Never commit either live credential file; only the two examples are tracked
 - Magnum scripts are intentionally outside GitOps — they run before Argo exists
