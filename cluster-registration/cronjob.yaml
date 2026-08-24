@@ -18,7 +18,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: register
-              image: registry.k8s.io/kubectl:v1.34.10
+              image: alpine/k8s:1.34.9@sha256:72c921a10c53ab749674e828ad12b776d006481c852bba7dd89e149ceed666f3
               command: ["/opt/csoc/bin/register.sh"]
               resources:
                 requests:

@@ -187,6 +187,14 @@ done
 
 log::step 4 "Rendering Kustomize and Helm packages"
 REGISTRATION_RENDER=$(kubectl kustomize "${REPO_ROOT}/cluster-registration")
+EXPECTED_REGISTRATION_IMAGE=$(awk -F= '$1 == "CLUSTER_REGISTRATION_IMAGE" { print substr($0, index($0, "=") + 1) }' "${REPO_ROOT}/versions.env")
+[[ -n "${EXPECTED_REGISTRATION_IMAGE}" ]] \
+  || log::die "CLUSTER_REGISTRATION_IMAGE must be pinned in versions.env"
+[[ $(yq -r 'select(.kind == "CronJob" and .metadata.name == "cluster-registration") | .spec.jobTemplate.spec.template.spec.containers[] | select(.name == "register") | .image' <<<"${REGISTRATION_RENDER}") \
+   == "${EXPECTED_REGISTRATION_IMAGE}" ]] \
+  || log::die "Cluster registration runtime must match the pinned shell-capable image"
+[[ "${EXPECTED_REGISTRATION_IMAGE}" == *@sha256:* ]] \
+  || log::die "Cluster registration runtime must be pinned by digest"
 rg -q 'confirm-reachability\.sh' <<<"${REGISTRATION_RENDER}" \
   || log::die "Cluster registration does not package the shared reachability checker"
 rg -q 'kubectl get spokecluster --all-namespaces' <<<"${REGISTRATION_RENDER}" \
