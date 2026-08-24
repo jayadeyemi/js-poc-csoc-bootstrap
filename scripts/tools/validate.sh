@@ -115,6 +115,9 @@ EXPECTED_NODE_CIDR='${schema.spec.infrastructure.nodeCIDR}'
 [[ $(yq -r '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.managedSubnets[0].dnsNameservers[0]' "${RGD}") \
    == '${schema.spec.infrastructure.dnsNameserver}' ]] \
   || log::die "Spoke DNS nameserver must be configured on the CAPO managed subnet"
+if yq -r '.spec.resources[].readyWhen[]?' "${RGD}" | rg -n 'schema\.'; then
+  log::die "KRO readyWhen expressions may only reference their resource identifier"
+fi
 
 log::step 3 "Validating fleet bounds, names, and network declarations"
 mapfile -t cluster_files < <(find "${WORKSPACE_ROOT}/js-poc-csoc-fleet/customers" \
