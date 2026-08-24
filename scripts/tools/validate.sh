@@ -125,6 +125,9 @@ rg -q '/usr/bin/kubeadm\.real' <<<"${KUBEADM_RETRY}" \
   || log::die "Kubernetes 1.34.8 control planes must retain the kubeadm load-balancer retry"
 rg -q -- '--skip-phases=preflight,certs,kubeconfig,etcd,control-plane,kubelet-start,wait-control-plane' <<<"${KUBEADM_RETRY}" \
   || log::die "Kubeadm retry must skip already-completed initialization phases"
+if rg -n '\$\{' <<<"${KUBEADM_RETRY}"; then
+  log::die "Kubeadm bootstrap commands must not contain Bash syntax that KRO parses as CEL"
+fi
 
 log::step 3 "Validating fleet bounds, names, and network declarations"
 mapfile -t cluster_files < <(find "${WORKSPACE_ROOT}/js-poc-csoc-fleet/customers" \
