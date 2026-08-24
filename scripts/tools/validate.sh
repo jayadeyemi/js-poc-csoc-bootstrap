@@ -118,6 +118,9 @@ EXPECTED_NODE_CIDR='${schema.spec.network.nodeCIDR}'
 [[ $(yq -r '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.externalNetwork.id' "${RGD}") \
    == '${schema.spec.network.externalNetworkID}' ]] \
   || log::die "Spoke external network must be sourced from the KRO network API"
+[[ $(yq -r '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.router.id' "${RGD}") \
+   == '${schema.spec.network.routerID}' ]] \
+  || log::die "Spoke router must be sourced from the KRO network API"
 [[ $(yq -r '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.apiServerLoadBalancer.allowedCIDRs[0]' "${RGD}") \
    == '${schema.spec.network.apiServerAllowedCIDR}' ]] \
   || log::die "Spoke API ingress must be sourced from the KRO network API"
