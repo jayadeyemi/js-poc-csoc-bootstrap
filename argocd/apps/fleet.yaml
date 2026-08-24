@@ -11,6 +11,7 @@ spec:
   source:
     repoURL: https://github.com/jayadeyemi/js-poc-csoc-fleet
     targetRevision: main
+    path: .
     directory:
       recurse: true
       include: "customers/**/*.yaml"
