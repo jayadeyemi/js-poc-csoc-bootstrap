@@ -93,12 +93,10 @@ RGD="${WORKSPACE_ROOT}/js-poc-csoc-platform-apis/rgds/spoke-cluster.rgd.yaml"
 if rg --line-number 'default\(' "${RGD}"; then
   log::die "Legacy KRO SimpleSchema default syntax detected"
 fi
-EXPECTED_WORKER_REPLICAS='${schema.spec.kubernetes.minNodes}'
 EXPECTED_WORKER_MIN='${string(schema.spec.kubernetes.minNodes)}'
 EXPECTED_WORKER_MAX='${string(schema.spec.kubernetes.maxNodes)}'
-[[ $(yq -r '.spec.resources[] | select(.id == "machinedeployment") | .template.spec.replicas' "${RGD}") \
-   == "${EXPECTED_WORKER_REPLICAS}" ]] \
-  || log::die "Spoke MachineDeployment must start at the declared minimum node count"
+[[ $(yq -r '.spec.resources[] | select(.id == "machinedeployment") | .template.spec.replicas // ""' "${RGD}") == "" ]] \
+  || log::die "KRO must leave MachineDeployment replicas under autoscaler ownership"
 [[ $(yq -r '.spec.resources[] | select(.id == "machinedeployment") | .template.metadata.annotations."cluster.x-k8s.io/cluster-api-autoscaler-node-group-min-size"' "${RGD}") \
    == "${EXPECTED_WORKER_MIN}" ]] \
   || log::die "Spoke MachineDeployment minimum autoscaling annotation is incorrect"
