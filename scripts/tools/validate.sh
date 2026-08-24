@@ -127,6 +127,9 @@ EXPECTED_NODE_CIDR='${schema.spec.network.nodeCIDR}'
 if yq -r '.spec.resources[].readyWhen[]?' "${RGD}" | rg -n 'schema\.'; then
   log::die "KRO readyWhen expressions may only reference their resource identifier"
 fi
+if yq -r '.spec.resources[].readyWhen[]?' "${RGD}" | rg -n 'matchingClusters'; then
+  log::die "Addon readiness must use the provider Ready condition, not an unrelated proxy name"
+fi
 [[ $(yq -r '.spec.resources[] | select(.id == "kubeadmcontrolplane") | .readyWhen // ""' "${RGD}") == "" ]] \
   || log::die "KRO must create the CAPI Cluster before waiting for its control plane readiness"
 KUBEADM_RETRY=$(yq -r '.spec.resources[] | select(.id == "kubeadmcontrolplane") | .template.spec.kubeadmConfigSpec.preKubeadmCommands[]' "${RGD}")
