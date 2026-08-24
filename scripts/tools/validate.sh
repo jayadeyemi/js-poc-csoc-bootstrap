@@ -124,6 +124,14 @@ EXPECTED_NODE_CIDR='${schema.spec.network.nodeCIDR}'
 [[ $(yq -r '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.apiServerLoadBalancer.allowedCIDRs[0]' "${RGD}") \
    == '${schema.spec.network.apiServerAllowedCIDR}' ]] \
   || log::die "Spoke API ingress must be sourced from the KRO network API"
+[[ $(yq -r '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.managedSecurityGroups.allowAllInClusterTraffic' "${RGD}") == false ]] \
+  || log::die "Spoke security groups must not allow unrestricted cluster traffic"
+[[ $(yq -o=json -I=0 '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.managedSecurityGroups.allNodesSecurityGroupRules[] | select(.name == "calico-typha") | {"direction": .direction, "etherType": .etherType, "protocol": .protocol, "portRangeMin": .portRangeMin, "portRangeMax": .portRangeMax, "remoteManagedGroups": .remoteManagedGroups}' "${RGD}") \
+   == '{"direction":"ingress","etherType":"IPv4","protocol":"tcp","portRangeMin":5473,"portRangeMax":5473,"remoteManagedGroups":["controlplane","worker"]}' ]] \
+  || log::die "Spoke security groups must allow Calico Typha traffic between managed nodes"
+[[ $(yq -o=json -I=0 '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.managedSecurityGroups.allNodesSecurityGroupRules[] | select(.name == "calico-vxlan") | {"direction": .direction, "etherType": .etherType, "protocol": .protocol, "portRangeMin": .portRangeMin, "portRangeMax": .portRangeMax, "remoteManagedGroups": .remoteManagedGroups}' "${RGD}") \
+   == '{"direction":"ingress","etherType":"IPv4","protocol":"udp","portRangeMin":4789,"portRangeMax":4789,"remoteManagedGroups":["controlplane","worker"]}' ]] \
+  || log::die "Spoke security groups must allow Calico VXLAN traffic between managed nodes"
 if yq -r '.spec.resources[].readyWhen[]?' "${RGD}" | rg -n 'schema\.'; then
   log::die "KRO readyWhen expressions may only reference their resource identifier"
 fi
@@ -152,6 +160,8 @@ fi
   || log::die "The reconciled Calico Installation must come from the KRO-owned config"
 [[ $(yq -r '.spec.resources[] | select(.id == "calicoinstallation") | .template.metadata.annotations."csoc.js2.org/calico-operator"' "${RGD}") == '${calico.metadata.name}' ]] \
   || log::die "The Calico Installation must depend on the ready KRO-owned operator"
+[[ $(yq -r '.spec.resources[] | select(.id == "calicoconfig") | .template.data."installation.yaml"' "${RGD}" | yq -r '.spec.calicoNetwork.bgp') == Disabled ]] \
+  || log::die "VXLAN-only Calico networking must disable BGP"
 
 log::step 3 "Validating fleet bounds, names, and network declarations"
 mapfile -t cluster_files < <(find "${WORKSPACE_ROOT}/js-poc-csoc-fleet/customers" \
