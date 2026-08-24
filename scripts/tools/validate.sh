@@ -118,6 +118,8 @@ EXPECTED_NODE_CIDR='${schema.spec.infrastructure.nodeCIDR}'
 if yq -r '.spec.resources[].readyWhen[]?' "${RGD}" | rg -n 'schema\.'; then
   log::die "KRO readyWhen expressions may only reference their resource identifier"
 fi
+[[ $(yq -r '.spec.resources[] | select(.id == "kubeadmcontrolplane") | .readyWhen // ""' "${RGD}") == "" ]] \
+  || log::die "KRO must create the CAPI Cluster before waiting for its control plane readiness"
 
 log::step 3 "Validating fleet bounds, names, and network declarations"
 mapfile -t cluster_files < <(find "${WORKSPACE_ROOT}/js-poc-csoc-fleet/customers" \
