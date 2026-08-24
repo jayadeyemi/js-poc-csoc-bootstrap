@@ -143,6 +143,12 @@ fi
   || log::die "The external cloud controller requires the controller-manager cloud-provider flag"
 [[ $(yq -r '.spec.resources[] | select(.id == "calico") | .template.spec.options.install.includeCRDs' "${RGD}") == true ]] \
   || log::die "Calico Helm installation must include Tigera CRDs before custom resources"
+[[ $(yq -r '.spec.resources[] | select(.id == "calico") | .template.spec.valuesTemplate' "${RGD}" | yq -r '.installation.enabled') == false ]] \
+  || log::die "The Calico operator must install before its Installation custom resource"
+[[ $(yq -r '.spec.resources[] | select(.id == "calicoinstallation") | .template.spec.resources[0].name' "${RGD}") == '${calicoconfig.metadata.name}' ]] \
+  || log::die "The reconciled Calico Installation must come from the KRO-owned config"
+[[ $(yq -r '.spec.resources[] | select(.id == "calicoinstallation") | .template.metadata.annotations."csoc.js2.org/calico-operator"' "${RGD}") == '${calico.metadata.name}' ]] \
+  || log::die "The Calico Installation must depend on the ready KRO-owned operator"
 
 log::step 3 "Validating fleet bounds, names, and network declarations"
 mapfile -t cluster_files < <(find "${WORKSPACE_ROOT}/js-poc-csoc-fleet/customers" \
