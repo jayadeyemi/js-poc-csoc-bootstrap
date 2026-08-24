@@ -141,6 +141,8 @@ fi
   || log::die "Kubernetes 1.33+ removed the kube-apiserver cloud-provider flag"
 [[ $(yq -r '.spec.resources[] | select(.id == "kubeadmcontrolplane") | .template.spec.kubeadmConfigSpec.clusterConfiguration.controllerManager.extraArgs."cloud-provider"' "${RGD}") == external ]] \
   || log::die "The external cloud controller requires the controller-manager cloud-provider flag"
+[[ $(yq -r '.spec.resources[] | select(.id == "calico") | .template.spec.options.install.includeCRDs' "${RGD}") == true ]] \
+  || log::die "Calico Helm installation must include Tigera CRDs before custom resources"
 
 log::step 3 "Validating fleet bounds, names, and network declarations"
 mapfile -t cluster_files < <(find "${WORKSPACE_ROOT}/js-poc-csoc-fleet/customers" \
