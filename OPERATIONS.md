@@ -35,6 +35,45 @@ second CNI, remove finalizers, or edit provider-side CAPI objects. Give
 Jetstream2 support the owned UUID, stack ID, API address, health, update time,
 and diagnostic bundle.
 
+## Kubernetes API reachability gates
+
+The exact CSOC/provider-cluster kubeconfig must pass authenticated HTTPS
+reachability before Argo CD is installed or any spoke is processed. The
+management verification runs the shared checker with an exact initial
+Ready-node count:
+
+```bash
+cluster-registration/confirm-reachability.sh \
+  --name "$MAGNUM_CLUSTER_NAME" \
+  --kubeconfig "${MAGNUM_KUBECONFIG_DIR:-$HOME/.kube}/${MAGNUM_CLUSTER_NAME}.yaml" \
+  --expected-ready 2 \
+  --expected-endpoint "https://<api-address>:6443"
+```
+
+The checker validates the kubeconfig, HTTPS endpoint, `/readyz`, authorization
+to list nodes, Ready-node count, and absence of the OpenStack
+cloud-provider-uninitialized taint. It never prints certificate or key data.
+
+The cluster-registration CronJob applies the same checker every two minutes to
+every enabled, provisionally Ready `SpokeCluster` returned by
+`kubectl get spokecluster --all-namespaces`. For a spoke, the minimum Ready
+count is `spec.controlPlane.count + spec.kubernetes.minNodes`. A new Argo
+cluster secret is created only after reachability passes.
+
+Reachability results are recorded on existing Argo cluster-secret annotations:
+
+```bash
+kubectl get secret -n argocd \
+  -l argocd.argoproj.io/secret-type=cluster \
+  -o custom-columns='NAME:.metadata.name,REACHABLE:.metadata.annotations.csoc\.js2\.org/reachable,CHECKED:.metadata.annotations.csoc\.js2\.org/reachability-checked-at'
+kubectl get jobs -n cluster-registration \
+  --sort-by=.metadata.creationTimestamp
+```
+
+A temporary spoke outage does not delete its Argo secret or Applications. The
+CronJob marks the existing registration unreachable, completes checks for the
+remaining spokes, reports a failed Job, and retries on its next schedule.
+
 ## Controller recovery
 
 Argo CD owns cert-manager, CAPI, CAPO, ORC, CAAPH, KRO, the SpokeCluster policy, and cluster
@@ -83,7 +122,7 @@ record the exact resource UUIDs, backups, tenant approval, and an OpenStack
 inventory diff in a reviewed change before issuing any delete operation.
 
 For a reviewed Magnum deletion, run
-`scripts/magnum/delete-owned.sh <reviewed-uuid>`. The argument must match
+`scripts/operations/magnum/delete-owned.sh <reviewed-uuid>`. The argument must match
 `.state/magnum-cluster.json`; the script captures diagnostics, sends exactly
 one delete request, waits up to 30 minutes, stops on `DELETE_FAILED`, and removes
 ownership state only after the record disappears. If the first watcher times

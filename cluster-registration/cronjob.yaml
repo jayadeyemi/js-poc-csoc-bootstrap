@@ -4,13 +4,14 @@ metadata:
   name: cluster-registration
   namespace: cluster-registration
 spec:
-  # Runs every 2 minutes and refreshes credentials and labels idempotently.
+  # Runs every 2 minutes and refreshes reachability, credentials, and labels.
   schedule: "*/2 * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
+      backoffLimit: 1
       template:
         spec:
           serviceAccountName: cluster-registration
@@ -18,88 +19,7 @@ spec:
           containers:
             - name: register
               image: registry.k8s.io/kubectl:v1.34.10
-              command: ["/bin/sh"]
-              args:
-                - -c
-                - |
-                  set -euo pipefail
-
-                  echo "[registration] Starting cluster registration pass"
-
-                  kubectl get spokecluster --all-namespaces \
-                    -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\n"}{end}' \
-                  | while IFS="$(printf '\t')" read -r NS NAME; do
-                    [ -n "$NAME" ] || continue
-                    ENABLED=$(kubectl get spokecluster "$NAME" -n "$NS" \
-                      -o jsonpath='{.spec.registration.enabled}' 2>/dev/null || true)
-                    READY=$(kubectl get spokecluster "$NAME" -n "$NS" \
-                      -o jsonpath='{.status.ready}' 2>/dev/null || true)
-                    ENDPOINT=$(kubectl get spokecluster "$NAME" -n "$NS" \
-                      -o jsonpath='{.status.endpoint}' 2>/dev/null || true)
-
-                    [ "$ENABLED" != "false" ] || { echo "[registration] $NAME: registration disabled"; continue; }
-                    [ "$READY" = "true" ] && [ -n "$ENDPOINT" ] \
-                      || { echo "[registration] $NAME: not ready"; continue; }
-
-                    KC_FILE=$(mktemp)
-                    trap 'rm -f -- "$KC_FILE"' EXIT
-                    if ! kubectl get secret "${NAME}-kubeconfig" -n "$NS" \
-                      -o jsonpath='{.data.value}' | base64 -d >"$KC_FILE"; then
-                      echo "[registration] $NAME: kubeconfig secret not found"
-                      rm -f -- "$KC_FILE"
-                      trap - EXIT
-                      continue
-                    fi
-                    chmod 600 "$KC_FILE"
-
-                    SERVER=$(kubectl config view --kubeconfig="$KC_FILE" \
-                      -o jsonpath='{.clusters[0].cluster.server}' --raw)
-                    CA=$(kubectl config view --kubeconfig="$KC_FILE" \
-                      -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' --raw)
-                    CERT=$(kubectl config view --kubeconfig="$KC_FILE" \
-                      -o jsonpath='{.users[0].user.client-certificate-data}' --raw)
-                    KEY=$(kubectl config view --kubeconfig="$KC_FILE" \
-                      -o jsonpath='{.users[0].user.client-key-data}' --raw)
-
-                    CUSTOMER=$(kubectl get spokecluster "$NAME" -n "$NS" -o \
-                      jsonpath="{.spec.registration.labels['csoc\.js2\.org/customer']}" 2>/dev/null || true)
-                    ENVIRONMENT=$(kubectl get spokecluster "$NAME" -n "$NS" -o \
-                      jsonpath="{.spec.registration.labels['csoc\.js2\.org/environment']}" 2>/dev/null || true)
-                    OWNERSHIP=$(kubectl get spokecluster "$NAME" -n "$NS" -o \
-                      jsonpath="{.spec.registration.labels['csoc\.js2\.org/ownership']}" 2>/dev/null || true)
-                    HELLO=$(kubectl get spokecluster "$NAME" -n "$NS" -o \
-                      jsonpath="{.spec.registration.labels['csoc\.js2\.org/hello-csoc']}" 2>/dev/null || true)
-                    SECURITY=$(kubectl get spokecluster "$NAME" -n "$NS" \
-                      -o jsonpath='{.spec.capabilities.security}' 2>/dev/null || true)
-                    OBSERVABILITY=$(kubectl get spokecluster "$NAME" -n "$NS" \
-                      -o jsonpath='{.spec.capabilities.observability}' 2>/dev/null || true)
-                    [ "$SECURITY" = "true" ] && SECURITY=enabled || SECURITY=disabled
-                    [ "$OBSERVABILITY" = "true" ] && OBSERVABILITY=enabled || OBSERVABILITY=disabled
-                    [ -n "$OWNERSHIP" ] || OWNERSHIP=csoc
-
-                    CONFIG=$(printf '{"tlsClientConfig":{"caData":"%s","certData":"%s","keyData":"%s"}}' \
-                      "$CA" "$CERT" "$KEY")
-                    kubectl create secret generic "cluster-${NAME}" -n argocd \
-                      --from-literal="name=${NAME}" \
-                      --from-literal="server=${SERVER}" \
-                      --from-literal="config=${CONFIG}" \
-                      --dry-run=client -o yaml \
-                    | kubectl apply --server-side -f - >/dev/null
-                    kubectl label secret "cluster-${NAME}" -n argocd --overwrite \
-                      argocd.argoproj.io/secret-type=cluster \
-                      csoc.js2.org/type=spoke \
-                      "csoc.js2.org/name=${NAME}" \
-                      "csoc.js2.org/customer=${CUSTOMER}" \
-                      "csoc.js2.org/environment=${ENVIRONMENT}" \
-                      "csoc.js2.org/ownership=${OWNERSHIP}" \
-                      "csoc.js2.org/hello-csoc=${HELLO}" \
-                      "csoc.js2.org/security=${SECURITY}" \
-                      "csoc.js2.org/observability=${OBSERVABILITY}" >/dev/null
-
-                    rm -f -- "$KC_FILE"
-                    trap - EXIT
-                    echo "[registration] $NAME: credentials and labels reconciled"
-                  done
+              command: ["/opt/csoc/bin/register.sh"]
               resources:
                 requests:
                   cpu: 50m
@@ -107,3 +27,12 @@ spec:
                 limits:
                   cpu: 200m
                   memory: 128Mi
+              volumeMounts:
+                - name: cluster-reachability
+                  mountPath: /opt/csoc/bin
+                  readOnly: true
+          volumes:
+            - name: cluster-reachability
+              configMap:
+                name: cluster-reachability
+                defaultMode: 0555

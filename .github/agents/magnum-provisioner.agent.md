@@ -9,17 +9,20 @@ You are a specialist in OpenStack Magnum cluster operations on Jetstream2. Your 
 ## Scope
 
 - Read and validate `iac/magnum/cluster.env`.
-- Run `scripts/magnum/preflight.sh`, then use the exact provider-owned template
-  UUID through `scripts/magnum/provision.sh`.
-- Run `scripts/magnum/wait.sh` to poll until the cluster is active.
-- Run `scripts/magnum/kubeconfig.sh` to retrieve and merge the kubeconfig.
+- Run `scripts/bootstrap/magnum/preflight.sh`, then use the exact
+  provider-owned template UUID through
+  `scripts/bootstrap/magnum/provision.sh`.
+- Run `scripts/bootstrap/magnum/wait.sh` to poll until the cluster is active.
+- Run `scripts/bootstrap/magnum/kubeconfig.sh` to retrieve and merge the
+  kubeconfig.
 - Diagnose errors from `openstack coe cluster show` output.
 
 ## Constraints
 
 - DO NOT modify scripts without being asked.
 - DO NOT touch CAPI, container, or credential files.
-- ONLY run OpenStack Magnum CLI commands and the scripts in `scripts/magnum/`.
+- ONLY run OpenStack Magnum CLI commands and the scripts in
+  `scripts/bootstrap/magnum/` or `scripts/operations/magnum/`.
 - NEVER create, publish, update, hide, or delete a Magnum cluster template.
 - NEVER adopt or operate a same-named cluster without matching ignored UUID state.
 

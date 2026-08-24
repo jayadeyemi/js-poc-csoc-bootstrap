@@ -29,11 +29,12 @@ CAPI/CAPO installation and upgrades always remain declarative.
 ## Repo layout
 
 ```
-scripts/lib/         shared bash libs — source these, never echo directly
-scripts/magnum/      Magnum cluster lifecycle (unchanged after GitOps)
-scripts/capi/        CAPO/workload runtime secret creation only
-scripts/argocd/      install.sh + bootstrap-apps.sh (Steps F+G)
-scripts/container/   build.sh / run.sh
+scripts/host/        host-only Docker build/run and outer bootstrap
+scripts/bootstrap/   one-shot management-container pipeline
+scripts/operations/  explicit operator diagnostics, inventory, and deletion
+scripts/lib/         source-only `.bash` libraries; never execute directly
+scripts/tools/       local/container validation and secret scanning
+cluster-registration/ scripts and manifests executed inside the CSOC cluster
 container/           Dockerfile + entrypoint (non-root, no baked secrets)
 credentials/         .gitignored — see credentials/README.md
 iac/magnum/          cluster.env — Magnum parameters (no secrets)
@@ -44,7 +45,9 @@ cluster-registration/ spoke auto-registration controller
 
 ## Bash conventions
 
-- All scripts: `set -euo pipefail` + source `scripts/lib/logging.sh`
+- Executable Bash scripts: `set -euo pipefail` + source
+  `scripts/lib/logging.bash`
+- `scripts/lib/*.bash` files are source-only and are never executed directly
 - Idempotent: check state before acting (`os::resource_exists`, `k8s::namespace_exists`)
 - `SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"`
 - Lib functions: `log::info/warn/error/die/step`, `os::auth_check`, `k8s::apply`, `k8s::ensure_namespace`

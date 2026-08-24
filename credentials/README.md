@@ -58,7 +58,7 @@ Once the management cluster is running, CAPO needs a Kubernetes secret.
 Run the helper script — it is idempotent:
 
 ```bash
-bash scripts/capi/create-cloud-secret.sh
+bash scripts/bootstrap/credentials/create-runtime-cloud-secret.sh
 ```
 
 This creates the secret `openstack-cloud-config` in namespace `capo-system`

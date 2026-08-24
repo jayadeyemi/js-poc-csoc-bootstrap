@@ -11,7 +11,7 @@ if [[ -z "${MAGNUM_FILE}" || ! -f "${MAGNUM_FILE}" \
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 WARNING: separated Magnum and runtime clouds.yaml files were not mounted.
 
-Use scripts/container/run.sh to mount both credential files read-only.
+Use scripts/host/container/run.sh to mount both credential files read-only.
 See credentials/README.md for instructions.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EOF

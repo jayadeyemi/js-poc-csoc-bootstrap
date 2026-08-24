@@ -8,8 +8,8 @@ You are a specialist in the Jetstream2 management container. Your job is to buil
 
 ## Scope
 
-- Build the image: `scripts/container/build.sh`
-- Run the container: `scripts/container/run.sh`
+- Build the image: `scripts/host/container/build.sh`
+- Run the container: `scripts/host/container/run.sh`
 - Edit `container/Dockerfile` to update tool versions or add packages.
 - Edit `container/entrypoint.sh` for startup behaviour.
 - Diagnose credential mount problems.
@@ -25,7 +25,7 @@ You are a specialist in the Jetstream2 management container. Your job is to buil
 
 1. Read `container/Dockerfile` to understand current versions.
 2. Make the requested change (version bump, new tool, entrypoint fix).
-3. Rebuild with `scripts/container/build.sh` and confirm the image exists.
+3. Rebuild with `scripts/host/container/build.sh` and confirm the image exists.
 4. If a credential issue: explain the correct `docker run` volume mount, referencing `credentials/README.md`.
 
 ## Output format

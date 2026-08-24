@@ -1,5 +1,5 @@
 # Argo CD Helm values for single-replica POC install
-# Used by scripts/argocd/install.sh
+# Used by scripts/bootstrap/argocd/install.sh
 # For production: increase replicas, configure HA redis, enable TLS properly.
 
 global:

@@ -110,12 +110,25 @@ case "${args}" in
       [[ -n "${line}" ]] || line=$(tail -n 1 "${FAKE_WAIT_SEQUENCE}")
       printf '%s\n' "${line}"
     else
-      printf '{"uuid":"%s","name":"js2-mgmt-cluster","status":"%s","health_status":"%s","status_reason":null,"updated_at":"2099-01-01T00:00:00Z","stack_id":"js2-stack","node_addresses":["10.0.0.2"],"master_addresses":["10.0.0.1"]}\n' \
-        "${cluster_id}" "${FAKE_CLUSTER_STATUS:-CREATE_COMPLETE}" "${FAKE_CLUSTER_HEALTH:-HEALTHY}"
+      printf '{"uuid":"%s","name":"js2-mgmt-cluster","status":"%s","health_status":"%s","status_reason":null,"updated_at":"2099-01-01T00:00:00Z","stack_id":"js2-stack","api_address":"https://10.0.0.1:6443","node_addresses":["10.0.0.2"],"master_addresses":["10.0.0.1"],"labels":{"auto_scaling_enabled":"%s","min_node_count":"1","max_node_count":"2"}}\n' \
+        "${cluster_id}" "${FAKE_CLUSTER_STATUS:-CREATE_COMPLETE}" "${FAKE_CLUSTER_HEALTH:-HEALTHY}" \
+        "${FAKE_AUTO_SCALING_ENABLED:-true}"
     fi
     ;;
   coe\ nodegroup\ show*)
-    printf '{"name":"default-worker","node_count":1,"min_node_count":1,"max_node_count":2,"status":"CREATE_COMPLETE"}\n'
+    if [[ -n "${FAKE_AUTOSCALE_STATE:-}" && -f "${FAKE_AUTOSCALE_STATE}" \
+       && $(<"${FAKE_AUTOSCALE_STATE}") == up ]]; then
+      printf '{"name":"default-worker","node_count":2,"min_node_count":1,"max_node_count":2,"status":"UPDATE_COMPLETE"}\n'
+    elif [[ -n "${FAKE_NODEGROUP_UPDATE_LOG:-}" && -s "${FAKE_NODEGROUP_UPDATE_LOG}" ]]; then
+      printf '{"name":"default-worker","node_count":1,"min_node_count":1,"max_node_count":2,"status":"UPDATE_COMPLETE"}\n'
+    else
+      printf '{"name":"default-worker","node_count":1,"min_node_count":1,"max_node_count":%s,"status":"CREATE_COMPLETE"}\n' \
+        "${FAKE_NODEGROUP_MAX:-2}"
+    fi
+    ;;
+  coe\ nodegroup\ update*)
+    printf '%s\n' "${args}" >"${FAKE_NODEGROUP_UPDATE_LOG:?FAKE_NODEGROUP_UPDATE_LOG is required}"
+    printf 'request accepted\n'
     ;;
   coe\ nodegroup\ list*) printf '[]\n' ;;
   "server list -f json")

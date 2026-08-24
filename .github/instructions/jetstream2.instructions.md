@@ -11,9 +11,9 @@ Full reference: [AGENTS.md](../../AGENTS.md) · Four repos: `js-poc-csoc-bootstr
 
 ### Bash scripts
 - All scripts begin with `set -euo pipefail`.
-- Source `scripts/lib/logging.sh` for all log output — never use `echo` directly for status messages.
-- Source `scripts/lib/openstack.sh` for OpenStack operations.
-- Source `scripts/lib/k8s.sh` for Kubernetes operations.
+- Source `scripts/lib/logging.bash` for all log output — never use `echo` directly for status messages.
+- Source `scripts/lib/openstack.bash` for OpenStack operations.
+- Source `scripts/lib/k8s.bash` for Kubernetes operations.
 - Scripts must be idempotent: check current state before creating resources.
 - Use the POSIX path `"$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"` to compute `SCRIPT_DIR`.
 
@@ -25,7 +25,8 @@ Full reference: [AGENTS.md](../../AGENTS.md) · Four repos: `js-poc-csoc-bootstr
 ### Credentials
 - Credentials are **never** committed to git.
 - OpenStack credentials use the **application credential** format (`v3applicationcredential`).
-- The container mounts `credentials/clouds.yaml` read-only.
+- The container mounts `credentials/magnum-clouds.yaml` and
+  `credentials/runtime-clouds.yaml` individually and read-only.
 - CAPO reads from the `openstack-cloud-config` secret in `capo-system`.
 
 ### New workload clusters (day-2 GitOps)
