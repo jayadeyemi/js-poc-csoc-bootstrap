@@ -75,6 +75,9 @@ for kind in MutatingWebhookConfiguration ValidatingWebhookConfiguration; do
     "${PLATFORM_PROJECT}" >/dev/null \
     || log::die "CSOC platform project does not permit required admission resource: ${kind}"
 done
+CAPI_VALUES=$(yq -r '.spec.source.helm.values' "${REPO_ROOT}/argocd/apps/capi-operator.yaml")
+[[ $(yq -r '.core.cluster-api.manager.featureGates.ClusterResourceSet // ""' <<<"${CAPI_VALUES}") == "" ]] \
+  || log::die "CAPI ${CAPI_VERSION} no longer accepts the ClusterResourceSet feature-gate flag"
 
 RGD="${WORKSPACE_ROOT}/js-poc-csoc-platform-apis/rgds/spoke-cluster.rgd.yaml"
 [[ $(yq -r '.spec.schema.apiVersion' "${RGD}") == v1alpha1 ]] \

@@ -9,19 +9,14 @@ source "${REPO_ROOT}/scripts/lib/logging.bash"
 
 APP_OF_APPS="${REPO_ROOT}/argocd/app-of-apps.yaml"
 PROJECT_DIR="${REPO_ROOT}/argocd/projects"
+APPLICATION_DIR="${REPO_ROOT}/argocd/apps"
+APPLICATIONSET_DIR="${REPO_ROOT}/argocd/applicationsets"
 GATE_CONFIGMAP=argocd-manual-manifest-gate
+ARGO_FIELD_MANAGER=argocd-controller
 
-log::step 1 "Verifying Argo CD is running"
-kubectl get deployment argocd-server -n argocd >/dev/null \
-  || log::die "Argo CD not found. Run 'make argocd-install' first."
-kubectl get configmap "${GATE_CONFIGMAP}" -n argocd >/dev/null \
-  || log::die "Manual manifest gate missing. Run 'make argocd-manual-smoke' first."
-
-log::step 2 "Applying AppProjects required by the root application"
-kubectl apply --server-side -f "${PROJECT_DIR}"
-
-log::step 3 "Applying App-of-Apps"
-kubectl apply --server-side -f "${APP_OF_APPS}" -n argocd
+apply_manifest() {
+  kubectl apply --server-side --field-manager="${ARGO_FIELD_MANAGER}" -f "$1"
+}
 
 wait_application() {
   local application=$1 timeout=${2:-900s}
@@ -45,12 +40,25 @@ wait_crd() {
     || log::die "CRD '${crd}' was not established"
 }
 
-log::step 4 "Waiting for controller Applications and their CRDs"
+log::step 1 "Verifying Argo CD is running"
+kubectl get deployment argocd-server -n argocd >/dev/null \
+  || log::die "Argo CD not found. Run 'make argocd-install' first."
+kubectl get configmap "${GATE_CONFIGMAP}" -n argocd >/dev/null \
+  || log::die "Manual manifest gate missing. Run 'make argocd-manual-smoke' first."
+
+log::step 2 "Applying AppProjects required by the root application"
+apply_manifest "${PROJECT_DIR}"
+
+log::step 3 "Applying controller Applications in dependency order"
+apply_manifest "${APPLICATION_DIR}/cert-manager.yaml"
 wait_application cert-manager
 wait_crd certificates.cert-manager.io
+
+apply_manifest "${APPLICATION_DIR}/orc.yaml"
 wait_application openstack-resource-controller
+
+apply_manifest "${APPLICATION_DIR}/capi-operator.yaml"
 wait_application capi-operator
-wait_application kro
 
 for crd in \
   clusters.cluster.x-k8s.io \
@@ -58,18 +66,30 @@ for crd in \
   kubeadmcontrolplanes.controlplane.cluster.x-k8s.io \
   openstackclusters.infrastructure.cluster.x-k8s.io \
   openstackclusteridentities.infrastructure.cluster.x-k8s.io \
-  helmchartproxies.addons.cluster.x-k8s.io \
-  resourcegraphdefinitions.kro.run; do
+  helmchartproxies.addons.cluster.x-k8s.io; do
   wait_crd "${crd}"
 done
 
-log::step 5 "Waiting for the SpokeCluster API and fleet handoff"
+apply_manifest "${APPLICATION_DIR}/kro.yaml"
+wait_application kro
+wait_crd resourcegraphdefinitions.kro.run
+
+log::step 4 "Applying platform, registration, and fleet Applications"
+apply_manifest "${APPLICATION_DIR}/capo-identity.yaml"
 wait_application capo-identity
+apply_manifest "${APPLICATION_DIR}/platform-apis.yaml"
 wait_application csoc-platform-apis
 wait_crd spokeclusters.csoc.js2.org
+apply_manifest "${APPLICATION_DIR}/spoke-policy.yaml"
 wait_application spoke-policy
+apply_manifest "${APPLICATION_DIR}/cluster-registration.yaml"
 wait_application cluster-registration
+apply_manifest "${APPLICATION_DIR}/fleet.yaml"
 wait_application csoc-fleet
+
+log::step 5 "Applying ApplicationSets and handing ownership to App-of-Apps"
+apply_manifest "${APPLICATIONSET_DIR}"
+apply_manifest "${APP_OF_APPS}"
 wait_application csoc-app-of-apps
 
 log::success "App-of-Apps applied. GitOps owns platform controllers."
