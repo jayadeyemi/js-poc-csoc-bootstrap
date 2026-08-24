@@ -105,11 +105,22 @@ EXPECTED_WORKER_MAX='${string(schema.spec.kubernetes.maxNodes)}'
 [[ $(yq -r '.spec.resources[] | select(.id == "machinedeployment") | .template.metadata.annotations."cluster.x-k8s.io/cluster-api-autoscaler-node-group-max-size"' "${RGD}") \
    == "${EXPECTED_WORKER_MAX}" ]] \
   || log::die "Spoke MachineDeployment maximum autoscaling annotation is incorrect"
+EXPECTED_NODE_CIDR='${schema.spec.infrastructure.nodeCIDR}'
+[[ $(yq -r '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.managedSubnets[0].cidr' "${RGD}") \
+   == "${EXPECTED_NODE_CIDR}" ]] \
+  || log::die "Spoke OpenStackCluster must provision its declared node CIDR through managedSubnets"
+[[ $(yq -r '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.dnsNameservers // ""' "${RGD}") \
+   == "" ]] \
+  || log::die "CAPO no longer supports top-level OpenStackCluster dnsNameservers"
+[[ $(yq -r '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.managedSubnets[0].dnsNameservers[0]' "${RGD}") \
+   == '${schema.spec.infrastructure.dnsNameserver}' ]] \
+  || log::die "Spoke DNS nameserver must be configured on the CAPO managed subnet"
 
-log::step 3 "Validating fleet bounds and unique names"
+log::step 3 "Validating fleet bounds, names, and network declarations"
 mapfile -t cluster_files < <(find "${WORKSPACE_ROOT}/js-poc-csoc-fleet/customers" \
   -type f -name cluster.yaml | sort)
 declare -A cluster_names=()
+declare -A node_cidrs=()
 for cluster_file in "${cluster_files[@]}"; do
   cluster_name=$(yq -er '.metadata.name' "${cluster_file}")
   [[ -z "${cluster_names[${cluster_name}]:-}" ]] \
@@ -119,6 +130,12 @@ for cluster_file in "${cluster_files[@]}"; do
   max_nodes=$(yq -er '.spec.kubernetes.maxNodes' "${cluster_file}")
   (( min_nodes >= 1 && min_nodes <= max_nodes )) \
     || log::die "Invalid worker bounds in ${cluster_file}: ${min_nodes}..${max_nodes}"
+  node_cidr=$(yq -er '.spec.infrastructure.nodeCIDR' "${cluster_file}")
+  [[ ${node_cidr} =~ ^(10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3}|192\.168\.[0-9]{1,3}\.[0-9]{1,3})/([8-9]|[12][0-9]|3[0-2])$ ]] \
+    || log::die "Spoke node CIDR must be an explicit RFC1918 IPv4 CIDR in ${cluster_file}: ${node_cidr}"
+  [[ -z "${node_cidrs[${node_cidr}]:-}" ]] \
+    || log::die "Duplicate spoke node CIDR '${node_cidr}'"
+  node_cidrs[${node_cidr}]="${cluster_file}"
 done
 
 log::step 4 "Rendering Kustomize and Helm packages"
