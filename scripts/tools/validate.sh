@@ -128,6 +128,10 @@ rg -q -- '--skip-phases=preflight,certs,kubeconfig,etcd,control-plane,kubelet-st
 if rg -n '\$\{' <<<"${KUBEADM_RETRY}"; then
   log::die "Kubeadm bootstrap commands must not contain Bash syntax that KRO parses as CEL"
 fi
+[[ $(yq -r '.spec.resources[] | select(.id == "kubeadmcontrolplane") | .template.spec.kubeadmConfigSpec.clusterConfiguration.apiServer.extraArgs."cloud-provider" // ""' "${RGD}") == "" ]] \
+  || log::die "Kubernetes 1.33+ removed the kube-apiserver cloud-provider flag"
+[[ $(yq -r '.spec.resources[] | select(.id == "kubeadmcontrolplane") | .template.spec.kubeadmConfigSpec.clusterConfiguration.controllerManager.extraArgs."cloud-provider"' "${RGD}") == external ]] \
+  || log::die "The external cloud controller requires the controller-manager cloud-provider flag"
 
 log::step 3 "Validating fleet bounds, names, and network declarations"
 mapfile -t cluster_files < <(find "${WORKSPACE_ROOT}/js-poc-csoc-fleet/customers" \
