@@ -62,6 +62,19 @@ for application_file in "${REPO_ROOT}"/argocd/apps/*.yaml; do
     log::die "Git directory Application is missing spec.source.path: ${application_file}"
   fi
 done
+PLATFORM_PROJECT="${REPO_ROOT}/argocd/projects/csoc-platform.yaml"
+for namespace in cert-manager kube-system capi-operator-system; do
+  yq -e \
+    ".spec.destinations[] | select(.server == \"https://kubernetes.default.svc\" and .namespace == \"${namespace}\")" \
+    "${PLATFORM_PROJECT}" >/dev/null \
+    || log::die "CSOC platform project does not permit required namespace: ${namespace}"
+done
+for kind in MutatingWebhookConfiguration ValidatingWebhookConfiguration; do
+  yq -e \
+    ".spec.clusterResourceWhitelist[] | select(.group == \"admissionregistration.k8s.io\" and .kind == \"${kind}\")" \
+    "${PLATFORM_PROJECT}" >/dev/null \
+    || log::die "CSOC platform project does not permit required admission resource: ${kind}"
+done
 
 RGD="${WORKSPACE_ROOT}/js-poc-csoc-platform-apis/rgds/spoke-cluster.rgd.yaml"
 [[ $(yq -r '.spec.schema.apiVersion' "${RGD}") == v1alpha1 ]] \
