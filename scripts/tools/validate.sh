@@ -75,6 +75,10 @@ for kind in MutatingWebhookConfiguration ValidatingWebhookConfiguration; do
     "${PLATFORM_PROJECT}" >/dev/null \
     || log::die "CSOC platform project does not permit required admission resource: ${kind}"
 done
+yq -e \
+  '.spec.clusterResourceWhitelist[] | select(.group == "infrastructure.cluster.x-k8s.io" and .kind == "OpenStackClusterIdentity")' \
+  "${PLATFORM_PROJECT}" >/dev/null \
+  || log::die "CSOC platform project does not permit the cluster-scoped CAPO identity"
 CAPI_VALUES=$(yq -r '.spec.source.helm.values' "${REPO_ROOT}/argocd/apps/capi-operator.yaml")
 [[ $(yq -r '.core.cluster-api.manager.featureGates.ClusterTopology // false' <<<"${CAPI_VALUES}") == true ]] \
   || log::die "CAPI ClusterTopology feature gate must remain enabled"

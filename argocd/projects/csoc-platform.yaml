@@ -51,6 +51,8 @@ spec:
       kind: ClusterRoleBinding
     - group: kro.run
       kind: ResourceGraphDefinition
+    - group: infrastructure.cluster.x-k8s.io
+      kind: OpenStackClusterIdentity
     - group: admissionregistration.k8s.io
       kind: ValidatingAdmissionPolicy
     - group: admissionregistration.k8s.io
