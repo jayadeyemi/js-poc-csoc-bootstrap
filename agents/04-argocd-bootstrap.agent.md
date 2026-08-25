@@ -62,9 +62,9 @@ GPU, high-memory, or worker-class selector fields.
 Do not bypass these readiness gates or allow Argo pruning during an RGD
 ownership transfer.
 
-The CSOC and spoke Hello Services must retain the OpenStack internal-load-
-balancer annotation. They must not attach a floating IP or reuse either
-cluster's Kubernetes API load balancer.
+CSOC Hello must remain internal. Spoke Hello may use a separate external
+Octavia load balancer only with the immutable local-host source `/32`; it must
+never reuse either cluster's Kubernetes API load balancer.
 
 ## 3. Verify identity isolation and ownership
 

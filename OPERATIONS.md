@@ -79,13 +79,12 @@ cloud-provider-uninitialized taint. It never prints certificate or key data.
 Spoke workloads are reconciled by KRO-created CAPI addon resources. No Argo
 cluster registration or ApplicationSet path is used.
 
-The CSOC and spoke Hello workloads each use a dedicated OpenStack application
-load balancer annotated as internal-only. Their VIPs are reachable only over
-the corresponding private cloud network; they do not receive public floating
-IPs. The existing Magnum/CAPO load balancers remain dedicated to Kubernetes
-API port 6443. Public application access requires a separate reviewed change
-with an explicit trusted source CIDR and proof that Octavia enforces source
-ranges; `0.0.0.0/0` is not acceptable.
+CSOC Hello uses a dedicated internal OpenStack load balancer. Spoke Hello uses
+its own external Octavia load balancer on the graph-produced private subnet,
+with `loadBalancerSourceRanges` restricted to the immutable local-operator
+`/32`. Neither reuses the Magnum/CAPO Kubernetes API load balancers. Confirm
+the Service range and Octavia security-group rule match before testing from
+the approved host; `0.0.0.0/0` is not acceptable.
 
 ## Controller recovery
 
