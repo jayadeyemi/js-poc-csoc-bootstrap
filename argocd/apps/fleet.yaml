@@ -4,21 +4,16 @@ metadata:
   name: csoc-fleet
   namespace: argocd
   annotations:
-    # SpokeCluster CRs require the CRD to exist first (created by KRO after wave -5)
-    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-wave: "5"
 spec:
   project: csoc-fleet
   source:
     repoURL: https://github.com/jayadeyemi/js-poc-csoc-fleet
     targetRevision: main
-    path: .
-    directory:
-      recurse: true
-      include: "customers/**/*.yaml"
-      exclude: "**/applications.yaml"   # app assignments are handled separately
+    path: accounts
   destination:
     server: https://kubernetes.default.svc
-    namespace: spokeclusters
+    namespace: kro-system
   syncPolicy:
     automated:
       prune: false          # never auto-delete a SpokeCluster — requires deliberate action

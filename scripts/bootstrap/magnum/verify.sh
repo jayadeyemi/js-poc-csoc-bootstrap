@@ -18,10 +18,10 @@ API_ADDRESS=$(jq -r '.api_address // empty' <<<"${CLUSTER_JSON}")
 
 log::step 1 "Confirming CSOC API reachability with the exact cluster kubeconfig"
 [[ -n "${API_ADDRESS}" ]] || log::die "Magnum did not report the CSOC API address"
-bash "${REPO_ROOT}/cluster-registration/confirm-reachability.sh" \
+bash "${REPO_ROOT}/scripts/lib/kubernetes-reachability.sh" \
   --name "${MAGNUM_CLUSTER_NAME}" \
   --kubeconfig "${KUBECONFIG_FILE}" \
-  --expected-ready "${MAGNUM_EXPECTED_INITIAL_NODES}" \
+  --minimum-ready "${MAGNUM_EXPECTED_INITIAL_NODES}" \
   --expected-endpoint "${API_ADDRESS}" \
   --timeout "${MAGNUM_VERIFY_TIMEOUT}s"
 

@@ -1,16 +1,13 @@
 /references
 
 # Credentials — never commit real credentials
-credentials/clouds.yaml
-credentials/*.yaml
-credentials/*.env
+scripts/host/credentials/magnum-clouds.yaml
+scripts/host/credentials/accounts/*/clouds.yaml
+scripts/host/credentials/*.pem
 .env
 *.env
 !versions.env
 !iac/magnum/cluster.env
-!credentials/magnum-clouds.yaml.example
-!credentials/runtime-clouds.yaml.example
-!credentials/README.md
 
 # Kubeconfig files produced by scripts
 *.kubeconfig

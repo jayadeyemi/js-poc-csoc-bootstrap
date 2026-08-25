@@ -6,15 +6,18 @@ credentials::magnum_file() {
   if [[ -n "${MAGNUM_CLOUDS_YAML:-}" ]]; then
     printf '%s\n' "${MAGNUM_CLOUDS_YAML}"
   else
-    printf '%s/credentials/magnum-clouds.yaml\n' "${REPO_ROOT}"
+    printf '%s/scripts/host/credentials/magnum-clouds.yaml\n' "${REPO_ROOT}"
   fi
 }
 
 credentials::runtime_file() {
+  local identity=${1:-test-poc}
   if [[ -n "${RUNTIME_CLOUDS_YAML:-}" ]]; then
     printf '%s\n' "${RUNTIME_CLOUDS_YAML}"
+  elif [[ -n "${RUNTIME_CREDENTIALS_DIR:-}" ]]; then
+    printf '%s/%s/clouds.yaml\n' "${RUNTIME_CREDENTIALS_DIR}" "${identity}"
   else
-    printf '%s/credentials/runtime-clouds.yaml\n' "${REPO_ROOT}"
+    printf '%s/scripts/host/credentials/accounts/%s/clouds.yaml\n' "${REPO_ROOT}" "${identity}"
   fi
 }
 

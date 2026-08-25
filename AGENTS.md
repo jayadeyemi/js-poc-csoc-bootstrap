@@ -1,6 +1,6 @@
 # js-poc-csoc-bootstrap
 
-Bootstraps the **CSOC management cluster** on Jetstream2 Magnum, then installs Argo CD and hands control to GitOps. After bootstrap completes, this repo is the source of truth for Argo CD's own configuration (projects, applicationsets, controller apps).
+Bootstraps the **CSOC management cluster** on Jetstream2 Magnum, then installs Argo CD and hands controllers, RGD definitions, and fleet instances to GitOps.
 
 ## Quick start
 
@@ -12,7 +12,7 @@ make bootstrap             # full pipeline A→G (idempotent)
 
 `make bootstrap` builds the pinned image on the host and runs the inner pipeline
 non-interactively as the host UID/GID. `make container-run` mounts the two live
-credential files individually at `/run/csoc-credentials` read-only and mounts
+credential locations at `/run/csoc-credentials` read-only and mounts
 the workspace at `/workspace`.
 
 ## Bootstrap sequence
@@ -34,13 +34,11 @@ scripts/bootstrap/   one-shot management-container pipeline
 scripts/operations/  explicit operator diagnostics, inventory, and deletion
 scripts/lib/         source-only `.bash` libraries; never execute directly
 scripts/tools/       local/container validation and secret scanning
-cluster-registration/ scripts and manifests executed inside the CSOC cluster
-container/           Dockerfile + entrypoint (non-root, no baked secrets)
-credentials/         .gitignored — see credentials/README.md
+scripts/host/docker/ Dockerfile + entrypoint (non-root, no baked secrets)
+scripts/host/credentials/ ignored credentials and tracked examples
 iac/magnum/          cluster.env — Magnum parameters (no secrets)
-argocd/              AppProjects, ApplicationSets, App-of-Apps, install values
-controllers/         CAPO identity and SpokeCluster admission policy
-cluster-registration/ spoke auto-registration controller
+argocd/              rgds/fleet AppProjects, Applications, App-of-Apps, install values
+controllers/         controller Applications installed before KRO graphs
 ```
 
 ## Bash conventions
@@ -55,18 +53,22 @@ cluster-registration/ spoke auto-registration controller
 
 ## Credentials
 
-- Magnum: short-lived unrestricted `credentials/magnum-clouds.yaml`
-- CAPO/workloads: distinct restricted `credentials/runtime-clouds.yaml`
-- CAPO: `openstack-cloud-config` in `capo-system`, plus a workload
-  `cloud.conf` resource-set secret in `spokeclusters`
-- See [credentials/README.md](credentials/README.md)
+- CSOC/Magnum: short-lived unrestricted
+  `scripts/host/credentials/magnum-clouds.yaml`
+- Spoke provisioning/workloads: a different restricted credential at
+  `scripts/host/credentials/accounts/<identity>/clouds.yaml`, even when the
+  CSOC and spoke identity use the same OpenStack project
+- For the initial fleet, `test-poc-cloud-config` and
+  `test-poc-workload-cloud-config` exist only in `spokeclusters-test-poc`
+- See [scripts/host/credentials/README.md](scripts/host/credentials/README.md)
 
 ## Argo CD conventions
 
 - All Applications must descend from `argocd/app-of-apps.yaml` — never apply orphan Applications
 - AppProjects must restrict `sourceRepos`, `destinations`, and `clusterResourceWhitelist` explicitly
 - Cluster labels: `csoc.js2.org/<key>: <value>`
-- ApplicationSets use the cluster generator with label selectors (not the git generator for cluster targeting)
+- Workloads reach spokes through KRO-produced CAPI addon resources; do not add
+  baseline or application ApplicationSets
 
 ## Custom agents
 

@@ -15,7 +15,7 @@ log::step 1 "Building management container image: ${FULL_TAG}"
 
 docker build \
   --tag "${FULL_TAG}" \
-  --file "${REPO_ROOT}/container/Dockerfile" \
+  --file "${REPO_ROOT}/scripts/host/docker/Dockerfile" \
   --build-arg "KUBECTL_VERSION=${KUBECTL_VERSION}" \
   --build-arg "HELM_VERSION=${HELM_VERSION}" \
   --build-arg "YQ_VERSION=${YQ_VERSION}" \
@@ -25,6 +25,6 @@ docker build \
   --build-arg "OCTAVIA_CLIENT_VERSION=${OCTAVIA_CLIENT_VERSION}" \
   --build-arg "DESIGNATE_CLIENT_VERSION=${DESIGNATE_CLIENT_VERSION}" \
   --build-arg "HEAT_CLIENT_VERSION=${HEAT_CLIENT_VERSION}" \
-  "${REPO_ROOT}/container"
+  "${REPO_ROOT}/scripts/host/docker"
 
 log::success "Image ready: ${FULL_TAG}"
