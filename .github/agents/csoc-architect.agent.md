@@ -42,7 +42,8 @@ inventory.
 - Never put credential values or secret references in Git or RGD schemas.
 - Imported OpenStack objects use exact filters and `managementPolicy: unmanaged`.
 - `SpokeCluster` exposes only mutable `minNodes` and `maxNodes`; approved image,
-  keypair, networks, Kubernetes version, and flavors come from immutable blocks.
+  SSH public key, networks, Kubernetes version, and flavors come from immutable
+  blocks. The Nova keypair itself is owned by a `SpokeKeypair` KRO/ORC graph.
 - Do not add GPU, high-memory, or per-cluster worker-class choices.
 - CSOC and spoke Hello workloads use separate internal application load
   balancers. Never reuse Magnum/CAPO API load balancers or attach public

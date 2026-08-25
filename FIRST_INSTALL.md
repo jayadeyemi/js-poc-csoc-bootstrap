@@ -46,7 +46,8 @@ fleet Application, so it deploys no CSOC or spoke instances.
 `-loadbalancer-service-config`, and `-kubernetes-config`. `SpokeIdentity`
 copies them into `spokeclusters-<identity>`. `SpokeEnvironmentConfig` produces
 immutable `<spoke>-network-config` and `<spoke>-cluster-config`; a network graph
-produces immutable `<spoke>-connection`.
+produces immutable `<spoke>-connection`, and `SpokeKeypair` creates the Nova
+keypair through ORC and publishes immutable `<spoke>-keypair-connection`.
 
 Changing any write-once value is a replacement operation: retire the consuming
 spoke, delete the affected graph/config instance after dependents are gone,

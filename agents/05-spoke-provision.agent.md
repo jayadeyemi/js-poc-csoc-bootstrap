@@ -37,8 +37,10 @@ Confirm:
   `maxWorkers`, GPU, high-memory, or `nodeClass` fields
 
 The worker bounds are deliberately mutable on `SpokeCluster`. Kubernetes
-version, control-plane settings, image, keypair, and the single general worker
-flavor come from graph-produced immutable account ConfigMaps.
+version, control-plane settings, image, SSH public key, and the single general
+worker flavor come from graph-produced immutable account ConfigMaps. A
+`SpokeKeypair` graph creates the Nova keypair through ORC; `SpokeCluster`
+consumes only its generated connection ConfigMap.
 
 ## Step 2 — Watch CAPI object creation (poll every 30 s)
 

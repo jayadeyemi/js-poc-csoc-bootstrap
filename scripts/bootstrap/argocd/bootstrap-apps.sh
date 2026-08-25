@@ -194,6 +194,9 @@ wait_crd sharedprovidernetworks.csoc.js2.org
 apply_manifest "${RGD_PACKAGE_DIR}/compute/spoke-server-group.rgd.yaml"
 wait_rgd spokeservergroup
 wait_crd spokeservergroups.csoc.js2.org
+apply_manifest "${RGD_PACKAGE_DIR}/compute/spoke-keypair.rgd.yaml"
+wait_rgd spokekeypair
+wait_crd spokekeypairs.csoc.js2.org
 apply_manifest "${RGD_PACKAGE_DIR}/security/spoke-security-group.rgd.yaml"
 wait_rgd spokesecuritygroup
 wait_crd spokesecuritygroups.csoc.js2.org
@@ -216,7 +219,7 @@ if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
   for account in "${active_accounts[@]}"; do
   account_dir="${ACCOUNTS_DIR}/${account}"
   namespace="spokeclusters-${account}"
-  for required in identity-config.yaml identity.yaml spoke-config.yaml network.yaml cluster.yaml; do
+  for required in identity-config.yaml identity.yaml spoke-config.yaml network.yaml keypair.yaml cluster.yaml; do
     [[ -f "${account_dir}/${required}" ]] \
       || log::die "Active account ${account} is missing ${required}"
   done
@@ -228,6 +231,8 @@ if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
   wait_instance_ready spokeidentity "${account}"
   apply_manifest "${account_dir}/spoke-config.yaml"
   wait_instance_ready spokeenvironmentconfig "${spoke_name}" "${namespace}"
+  apply_manifest "${account_dir}/keypair.yaml"
+  wait_instance_ready spokekeypair "${spoke_name}" "${namespace}"
   if [[ -f "${account_dir}/network-import-config.yaml" ]]; then
     apply_manifest "${account_dir}/network-import-config.yaml"
     wait_instance_ready spokenetworkimportconfig "${spoke_name}" "${namespace}"
