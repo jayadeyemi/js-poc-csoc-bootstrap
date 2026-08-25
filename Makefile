@@ -63,7 +63,7 @@ magnum-verify-autoscaling: ## Exercise management workers within bounds
 	bash scripts/bootstrap/magnum/verify-autoscaling.sh
 
 # ── CAPI ──────────────────────────────────────────────────────────────────────
-capi-secret: ## Create/update the OpenStack cloud secret for CAPO
+capi-secret: ## Load/update the restricted test-poc CAPO/ORC and workload secrets
 	bash scripts/bootstrap/credentials/create-runtime-cloud-secret.sh
 
 # ── Argo CD ────────────────────────────────────────────────────────────────
