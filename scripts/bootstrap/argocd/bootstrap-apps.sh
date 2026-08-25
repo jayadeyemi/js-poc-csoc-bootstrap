@@ -259,6 +259,13 @@ if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
   apply_profile_application csoc-fleet
   wait_application csoc-fleet 1800s
 fi
+# Older root configurations included app-of-apps.yaml in their own source and
+# therefore stamped this object with their tracking ID. The current root is
+# host-bootstrapped and intentionally renders only projects and child
+# Applications. Remove that stale marker before waiting so prune=false does not
+# leave the root permanently OutOfSync as an extraneous self-owned resource.
+kubectl annotate application csoc-app-of-apps -n argocd \
+  argocd.argoproj.io/tracking-id- >/dev/null
 apply_manifest "${APP_OF_APPS}"
 wait_application csoc-app-of-apps
 
