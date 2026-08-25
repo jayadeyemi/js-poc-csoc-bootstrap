@@ -130,6 +130,15 @@ for config_id in networkconfig clusterconfig; do
   [[ $(yq -r ".spec.resources[] | select(.id == \"${config_id}\") | .template.immutable" "${ENV_CONFIG_RGD}") == true ]] \
     || log::die "SpokeEnvironmentConfig output ${config_id} must be immutable"
 done
+[[ $(yq -r '.spec.schema.spec.kubernetes | keys | join(",")' "${CONFIG_RGD}") \
+   == version,controlPlaneCount,controlPlaneFlavor,generalWorkerFlavor ]] \
+  || log::die "Immutable Kubernetes config must contain only version, control-plane settings, and the general worker flavor"
+[[ $(yq -r '.spec.resources[] | select(.id == "kubernetesconfig") | .template.data | keys | join(",")' "${CONFIG_RGD}") \
+   == version,controlPlaneCount,controlPlaneFlavor,generalWorkerFlavor ]] \
+  || log::die "Generated Kubernetes ConfigMap contains mutable bounds or unsupported worker classes"
+[[ $(yq -r '.spec.schema.spec | keys | join(",")' "${ENV_CONFIG_RGD}") \
+   == environment,nodeCIDR,podCIDR,serviceCIDR ]] \
+  || log::die "SpokeEnvironmentConfig must not expose a worker class"
 [[ $(yq -r '.spec.resources[] | select(.id == "accountpolicy") | .template.spec.paramKind.kind' "${IDENTITY_RGD}") == SpokeIdentity ]] \
   || log::die "Account restrictions must be parameterized by SpokeIdentity"
 for network_rgd in "${AUTO_NETWORK_RGD}" "${DEDICATED_NETWORK_RGD}"; do
@@ -165,6 +174,9 @@ for forbidden in infrastructure controlPlane network networkRef environment prov
   [[ $(yq -r ".spec.schema.spec.${forbidden} // \"\"" "${SPOKE_RGD}") == "" ]] \
     || log::die "Fleet-visible SpokeCluster field is forbidden: ${forbidden}"
 done
+[[ $(yq -r '.spec.schema.spec | keys | join(",")' "${SPOKE_RGD}") == kubernetes \
+   && $(yq -r '.spec.schema.spec.kubernetes | keys | join(",")' "${SPOKE_RGD}") == minNodes,maxNodes ]] \
+  || log::die "SpokeCluster must expose only mutable minNodes and maxNodes"
 for external_id in accountnamespace identity infrastructureconfig kubernetesconfig clusterconfig networkconnection; do
   yq -e ".spec.resources[] | select(.id == \"${external_id}\") | .externalRef" "${SPOKE_RGD}" >/dev/null \
     || log::die "SpokeCluster is missing external reference ${external_id}"
@@ -180,6 +192,9 @@ done
 [[ $(yq -r '.spec.resources[] | select(.id == "controlplanemachinetemplate") | .template.spec.template.spec.image.id' "${SPOKE_RGD}") \
    == '${infrastructureconfig.data.imageID}' ]] \
   || log::die "Approved image must come from the immutable infrastructure ConfigMap"
+[[ $(yq -r '.spec.resources[] | select(.id == "workermachinetemplate") | .template.spec.template.spec.flavor' "${SPOKE_RGD}") \
+   == '${kubernetesconfig.data.generalWorkerFlavor}' ]] \
+  || log::die "Workers must use the immutable approved general flavor"
 [[ $(yq -r '.spec.resources[] | select(.id == "cloudconfigresourceset") | .template.spec.resources[0].name' "${SPOKE_RGD}") \
    == '${identity.metadata.name + "-workload-cloud-config"}' ]] \
   || log::die "Workload credentials must be identity scoped"
@@ -210,6 +225,12 @@ min_nodes=$(yq -er '.spec.kubernetes.minNodes' "${ACCOUNT_DIR}/cluster.yaml")
 max_nodes=$(yq -er '.spec.kubernetes.maxNodes' "${ACCOUNT_DIR}/cluster.yaml")
 (( min_nodes >= 1 && min_nodes <= max_nodes && max_nodes <= 4 )) \
   || log::die "Invalid test-poc worker bounds"
+[[ $(yq -r '.spec.kubernetes | keys | join(",")' "${ACCOUNT_DIR}/identity-config.yaml") \
+   == version,controlPlaneCount,controlPlaneFlavor,generalWorkerFlavor ]] \
+  || log::die "test-poc immutable config must not contain scale bounds or unsupported worker classes"
+[[ $(yq -r '.spec | keys | join(",")' "${ACCOUNT_DIR}/cluster.yaml") == kubernetes \
+   && $(yq -r '.spec.kubernetes | keys | join(",")' "${ACCOUNT_DIR}/cluster.yaml") == minNodes,maxNodes ]] \
+  || log::die "test-poc SpokeCluster must contain only mutable worker bounds"
 node_cidr=$(yq -er '.spec.nodeCIDR' "${ACCOUNT_DIR}/spoke-config.yaml")
 [[ ${node_cidr} =~ ^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.) ]] \
   || log::die "Dedicated network CIDR is not RFC1918"

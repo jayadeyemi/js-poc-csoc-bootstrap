@@ -10,8 +10,8 @@ tools:
 
 # Spoke Cluster Provisioning
 
-**Prerequisite:** Agent 04 completed — `poc-tenant-dev` SpokeCluster exists,
-all controller CRDs are Established.
+**Prerequisite:** Agent 04 completed — the `accounts/test-poc` graph instances
+exist and all controller CRDs are Established.
 **Duration:** 15–30 minutes for full provisioning.
 
 ## Container invocation pattern
@@ -25,15 +25,18 @@ KDIR="$(pwd)/.state/kubeconfigs"
 
 ```bash
 KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh \
-  kubectl get spokecluster poc-tenant-dev -n spokeclusters -o yaml
+  kubectl get spokecluster poc-tenant-dev -n spokeclusters-test-poc -o yaml
 ```
 
 Confirm:
-- `spec.infrastructure.sshKeyName: jetstream-CSOC-POC`
-- `spec.kubernetes.version: v1.34.8`
 - `spec.kubernetes.minNodes: 2`, `maxNodes: 4`
-- `spec.controlPlane.count: 1`, `flavor: m3.small`
-- `spec.registration.enabled: true`
+- `test-poc-kubernetes-config` contains one approved `generalWorkerFlavor`
+- no immutable ConfigMap or environment instance contains `minWorkers`,
+  `maxWorkers`, GPU, high-memory, or `nodeClass` fields
+
+The worker bounds are deliberately mutable on `SpokeCluster`. Kubernetes
+version, control-plane settings, image, keypair, and the single general worker
+flavor come from graph-produced immutable account ConfigMaps.
 
 ## Step 2 — Watch CAPI object creation (poll every 30 s)
 
@@ -45,10 +48,10 @@ KDIR="$(pwd)/.state/kubeconfigs"
 watch -n 30 'KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh bash -c "
   echo === CAPI objects === &&
   kubectl get cluster,openstackcluster,kubeadmcontrolplane,machinedeployment \
-    -n spokeclusters 2>/dev/null &&
+    -n spokeclusters-test-poc 2>/dev/null &&
   echo &&
   echo === SpokeCluster status === &&
-  kubectl get spokecluster poc-tenant-dev -n spokeclusters \
+  kubectl get spokecluster poc-tenant-dev -n spokeclusters-test-poc \
     -o custom-columns=NAME:.metadata.name,READY:.status.ready,PHASE:.status.phase,ENDPOINT:.status.endpoint 2>/dev/null
 "'
 ```
@@ -60,7 +63,7 @@ The control-plane machine (1 replica, `m3.small`) provisions first.
 ```bash
 KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh bash -c '
   kubectl wait kubeadmcontrolplane poc-tenant-dev-control-plane \
-    -n spokeclusters \
+    -n spokeclusters-test-poc \
     --for=jsonpath="{.status.ready}"=true \
     --timeout=20m
 '
@@ -72,25 +75,27 @@ While waiting, check the OpenStackCluster for the API load-balancer IP:
 
 ```bash
 KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh \
-  kubectl get openstackcluster poc-tenant-dev -n spokeclusters \
+  kubectl get openstackcluster poc-tenant-dev -n spokeclusters-test-poc \
     -o jsonpath='{.status.apiServerLoadBalancer.ip}{"\n"}'
 ```
 
 ## Step 4 — Monitor worker MachineDeployment
 
-Workers (`minNodes: 2`, flavor `m3.medium`) are created after the control plane is Ready.
+Workers (`minNodes: 2`, approved general flavor `m3.medium`) are created after
+the control plane is Ready. Scaling may change the replica count within the
+mutable `2..4` bounds; it does not change the worker flavor.
 
 ```bash
 KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh bash -c '
   kubectl rollout status machinedeployment/poc-tenant-dev-workers \
-    -n spokeclusters --timeout=20m
+    -n spokeclusters-test-poc --timeout=20m
 '
 ```
 
 Or poll manually:
 ```bash
 KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh \
-  kubectl get machinedeployment poc-tenant-dev-workers -n spokeclusters \
+  kubectl get machinedeployment poc-tenant-dev-workers -n spokeclusters-test-poc \
     -o jsonpath='{.status.readyReplicas}/{.status.replicas}{"\n"}'
 ```
 
@@ -103,7 +108,7 @@ These install onto the spoke once it is provisioned.
 
 ```bash
 KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh \
-  kubectl get helmchartproxy -n spokeclusters
+  kubectl get helmchartproxy -n spokeclusters-test-poc
 ```
 
 Expected: three proxies (`poc-tenant-dev-calico`, `poc-tenant-dev-openstack-ccm`,
@@ -113,7 +118,7 @@ Check addon conditions:
 ```bash
 KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh bash -c '
   for proxy in poc-tenant-dev-calico poc-tenant-dev-openstack-ccm poc-tenant-dev-cinder-csi; do
-    kubectl get helmchartproxy "$proxy" -n spokeclusters \
+    kubectl get helmchartproxy "$proxy" -n spokeclusters-test-poc \
       -o jsonpath="{.metadata.name}: ready={.status.conditions[?(@.type==\"Ready\")].status}{\"\\n\"}" 2>/dev/null \
       || echo "$proxy: not yet created"
   done
@@ -126,9 +131,9 @@ Expected: all three show `ready=True`.
 
 ```bash
 KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh bash -c '
-  until kubectl get spokecluster poc-tenant-dev -n spokeclusters \
+  until kubectl get spokecluster poc-tenant-dev -n spokeclusters-test-poc \
       -o jsonpath="{.status.ready}" 2>/dev/null | grep -q "^true$"; do
-    phase=$(kubectl get spokecluster poc-tenant-dev -n spokeclusters \
+    phase=$(kubectl get spokecluster poc-tenant-dev -n spokeclusters-test-poc \
       -o jsonpath="{.status.phase}" 2>/dev/null || echo unknown)
     echo "$(date -u +%H:%M:%SZ) phase=$phase — waiting..."
     sleep 30
@@ -144,7 +149,7 @@ KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh bash -c '
 ```bash
 KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh bash -c '
   kubectl get secret poc-tenant-dev-kubeconfig \
-    -n spokeclusters \
+    -n spokeclusters-test-poc \
     -o jsonpath="{.data.value}" | base64 -d \
     > /workspace/js-poc-csoc-bootstrap/.state/kubeconfigs/poc-tenant-dev.yaml
   chmod 600 /workspace/js-poc-csoc-bootstrap/.state/kubeconfigs/poc-tenant-dev.yaml
@@ -183,7 +188,7 @@ external network ID mismatch in `cluster.env`.
 **KubeadmControlPlane machines not becoming Ready:** Check machine status:
 ```bash
 KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh \
-  kubectl get machines -n spokeclusters -o wide
+  kubectl get machines -n spokeclusters-test-poc -o wide
 ```
 
 **HelmChartProxy never installs addons:** Verify `clusterresourceset`
@@ -191,7 +196,7 @@ KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh \
 ```bash
 KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh \
   kubectl get clusterresourceset poc-tenant-dev-openstack-cloud-config \
-    -n spokeclusters -o jsonpath='{.status.conditions}'
+    -n spokeclusters-test-poc -o jsonpath='{.status.conditions}'
 ```
 
 ## Pass criteria
@@ -207,4 +212,6 @@ KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh \
 | spoke kubeconfig | saved to `.state/kubeconfigs/poc-tenant-dev.yaml` |
 | spoke namespaces | reachable, kube-system Running |
 
-Proceed to **06-spoke-register**.
+After readiness, verify the `HelloApp/poc-tenant-dev` ClusterResourceSet,
+Cinder PVC read/write, and bounded `2→3→2` autoscaling. Registration and Argo
+ApplicationSets are intentionally not part of this architecture.
