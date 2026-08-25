@@ -13,6 +13,7 @@ apps/
 projects/
   rgds.yaml             AppProject for controllers and RGD definitions
   csoc-fleet.yaml       AppProject for account-scoped fleet instances
+  csoc-baseline.yaml    AppProject boundary for trusted workload instances
 ```
 
 ## Sync wave order
@@ -33,6 +34,12 @@ projects/
 |---------|-------------|---------|
 | `rgds` | bootstrap, app-catalog, chart registries | Controllers and RGD definitions |
 | `csoc-fleet` | fleet | Account-scoped graph instances |
+| `csoc-baseline` | app-catalog, fleet | Trusted CSOC-local and spoke workload graph instances |
+
+There is deliberately no `csoc-baseline` Application or ApplicationSet. The
+project is the authorization boundary for trusted workload instances; the
+single fleet Application currently owns the CSOC and opt-in spoke `HelloApp`
+instances.
 
 `prune: false` is set on all Applications. Removing a spoke from Git therefore
 makes it an orphan warning without deleting it. After the fleet default branch

@@ -55,14 +55,14 @@ if rg --line-number 'coe cluster template (create|update|delete)' "${REPO_ROOT}/
   log::die "Magnum template mutation detected"
 fi
 
-log::step 2 "Validating the two-project Argo ownership graph"
+log::step 2 "Validating the three-project Argo ownership graph"
 mapfile -t project_names < <(
   for project_file in "${REPO_ROOT}"/argocd/projects/*.yaml; do
     yq -r '.metadata.name' "${project_file}"
   done | sort
 )
-[[ "${project_names[*]}" == "csoc-fleet rgds" ]] \
-  || log::die "Expected exactly the csoc-fleet and rgds AppProjects"
+[[ "${project_names[*]}" == "csoc-baseline csoc-fleet rgds" ]] \
+  || log::die "Expected exactly the csoc-baseline, csoc-fleet, and rgds AppProjects"
 [[ $(yq -r '.spec.project' "${REPO_ROOT}/argocd/app-of-apps.yaml") == rgds ]] \
   || log::die "App-of-Apps must belong to rgds"
 for controller in "${REPO_ROOT}"/controllers/*.yaml; do
@@ -112,6 +112,9 @@ done
 yq -e '.spec.namespaceResourceWhitelist[] | select(.group == "apps.csoc.js2.org" and .kind == "HelloApp")' \
   "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml" >/dev/null \
   || log::die "Fleet project does not permit HelloApp"
+yq -e '.spec.namespaceResourceWhitelist[] | select(.group == "apps.csoc.js2.org" and .kind == "HelloApp")' \
+  "${REPO_ROOT}/argocd/projects/csoc-baseline.yaml" >/dev/null \
+  || log::die "CSOC baseline project does not permit trusted HelloApp instances"
 [[ $(yq -r '.spec.orphanedResources.warn' "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml") == true ]] \
   || log::die "Fleet project must warn about Git-retired resources awaiting deliberate teardown"
 [[ $(yq -r '.spec.syncPolicy.automated.prune' "${REPO_ROOT}/argocd/apps/fleet.yaml") == false ]] \

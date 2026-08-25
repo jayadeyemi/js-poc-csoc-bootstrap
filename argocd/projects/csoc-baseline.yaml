@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: csoc-baseline
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  description: "Trusted CSOC-local and spoke workload graph instances."
+  orphanedResources:
+    warn: true
+  sourceRepos:
+    - https://github.com/jayadeyemi/js-poc-csoc-app-catalog
+    - https://github.com/jayadeyemi/js-poc-csoc-fleet
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: kro-system
+    - server: https://kubernetes.default.svc
+      namespace: "spokeclusters-*"
+  namespaceResourceWhitelist:
+    - group: apps.csoc.js2.org
+      kind: HelloApp
