@@ -27,7 +27,8 @@ make container-up PROFILE=prod
 
 Before using these commands, follow [FIRST_INSTALL.md](FIRST_INSTALL.md). It is
 the authoritative checklist of directories, non-secret manifests, credential
-files, manual apply gates, and activation steps.
+files, revision-bound manual apply gates, and activation steps. A gate created
+for an older Git commit cannot authorize newly pulled manifests.
 
 `make bootstrap` runs the inner pipeline non-interactively as the host UID/GID inside the pinned image. `make container-run` mounts live credentials at `/run/csoc-credentials` read-only and the workspace at `/workspace`.
 

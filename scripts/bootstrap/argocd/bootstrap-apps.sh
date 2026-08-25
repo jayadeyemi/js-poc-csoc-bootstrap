@@ -35,6 +35,12 @@ archive_revision "${CATALOG_ROOT}" "${CSOC_CATALOG_REVISION}" "${CATALOG_SOURCE}
 if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
   archive_revision "${FLEET_ROOT}" "${CSOC_FLEET_REVISION}" "${FLEET_SOURCE}"
 fi
+BOOTSTRAP_COMMIT=$(git -C "${REPO_ROOT}" rev-parse "refs/remotes/origin/${CSOC_BOOTSTRAP_REVISION}")
+CATALOG_COMMIT=$(git -C "${CATALOG_ROOT}" rev-parse "refs/remotes/origin/${CSOC_CATALOG_REVISION}")
+FLEET_COMMIT=disabled
+if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
+  FLEET_COMMIT=$(git -C "${FLEET_ROOT}" rev-parse "refs/remotes/origin/${CSOC_FLEET_REVISION}")
+fi
 
 APP_OF_APPS="${BOOTSTRAP_SOURCE}/${CSOC_ARGO_ROOT_MANIFEST_REL}"
 PROJECT_DIR="${BOOTSTRAP_SOURCE}/argocd/projects"
@@ -109,6 +115,18 @@ kubectl get deployment argocd-server -n argocd >/dev/null \
   || log::die "Argo CD not found. Run 'make argocd-install' first."
 kubectl get configmap "${GATE_CONFIGMAP}" -n argocd >/dev/null \
   || log::die "Manual manifest gate missing. Run 'make argocd-manual-smoke' first."
+for gate_key_and_value in \
+  "profile=${CSOC_PROFILE}" \
+  "bootstrap-commit=${BOOTSTRAP_COMMIT}" \
+  "catalog-commit=${CATALOG_COMMIT}" \
+  "fleet-commit=${FLEET_COMMIT}"; do
+  gate_key=${gate_key_and_value%%=*}
+  expected_value=${gate_key_and_value#*=}
+  actual_value=$(kubectl get configmap "${GATE_CONFIGMAP}" -n argocd \
+    -o "go-template={{ index .data \"${gate_key}\" }}")
+  [[ "${actual_value}" == "${expected_value}" ]] \
+    || log::die "Manual manifest gate does not match ${gate_key}; rerun 'make argocd-manual-smoke'"
+done
 [[ -f "${RGD_DIR}/kustomization.yaml" ]] \
   || log::die "RGD definitions are unavailable for ${CSOC_CATALOG_REVISION}"
 if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then

@@ -59,7 +59,9 @@ then create a new instance. Only `SpokeCluster.spec.kubernetes.minNodes` and
    `make preflight PROFILE=dev`; confirm the Magnum dry-run resolves only the provider-owned
    template.
 2. Create/verify the Magnum CSOC and obtain its certificate kubeconfig.
-3. Install Argo CD itself, then run `make argocd-manual-smoke`.
+3. Install Argo CD itself, then run `make argocd-manual-smoke`. The gate is
+   tied to the selected profile and the exact fetched bootstrap, catalog, and
+   enabled-fleet commit IDs; a later remote commit requires a new dry-run gate.
 4. Run `make capi-secret PROFILE=dev IDENTITY=<identity>` for each active account. The
    loader verifies restriction, expiry, project match, and CSOC/spoke
    credential separation without printing credential values.
