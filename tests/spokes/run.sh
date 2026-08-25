@@ -13,6 +13,8 @@ for required in \
   'Application csoc-fleet must be Synced' \
   'prune=false' \
   'credentials::metadata' \
+  'kubectl api-resources --api-group=csoc.js2.org --namespaced=true' \
+  'independently owned graphs' \
   'kubectl --kubeconfig "${WORKLOAD_KUBECONFIG}" delete namespace hello-app' \
   'kubectl delete spokecluster' \
   'kubectl delete "${NETWORK_KIND}"'; do
@@ -44,3 +46,4 @@ fi
 printf 'ok - spoke teardown requires Git/Argo/credential/confirmation gates\n'
 printf 'ok - spoke teardown order is workload -> CAPI/CAPO -> KRO/ORC\n'
 printf 'ok - spoke teardown has no raw OpenStack delete or finalizer bypass\n'
+printf 'ok - identity deletion fails closed when optional or future RGDs remain\n'

@@ -145,3 +145,10 @@ The script never runs raw `openstack server/network/subnet/router/loadbalancer
 delete`, never removes finalizers, and never touches the Magnum CSOC. If a
 controller deletion stalls, it stops with evidence so the cause can be fixed
 without bypassing ownership.
+
+The operation automates only the common spoke contract. Before
+`--delete-identity` removes the account namespace, it discovers every remaining
+namespaced `csoc.js2.org` instance and fails closed. Optional or future graphs
+such as `SpokeVolume`, `SpokeSecurityGroup`, and `SpokeServerGroup` must be
+reviewed and deleted according to their own data/lifecycle semantics; namespace
+deletion is never allowed to erase them implicitly.

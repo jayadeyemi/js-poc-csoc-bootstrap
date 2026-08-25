@@ -188,7 +188,23 @@ fi
 log::step 6 "Deleting write-once spoke blocks after infrastructure cleanup"
 kubectl delete spokeenvironmentconfig "${SPOKE}" -n "${NAMESPACE}" \
   --ignore-not-found --wait=true --timeout=10m
+kubectl delete spokenetworkimportconfig "${SPOKE}" -n "${NAMESPACE}" \
+  --ignore-not-found --wait=true --timeout=10m
+kubectl delete spokesharednetworkconfig "${SPOKE}" -n "${NAMESPACE}" \
+  --ignore-not-found --wait=true --timeout=10m
 if [[ "${DELETE_IDENTITY}" == true ]]; then
+  # Different RGDs have different lifecycle and data-loss semantics. Never let
+  # identity namespace deletion implicitly erase an optional or future graph.
+  # The operator must retire those instances explicitly, then rerun this
+  # idempotent operation.
+  declare -a remaining_graphs=()
+  while IFS= read -r resource_type; do
+    while IFS= read -r resource_name; do
+      [[ -z "${resource_name}" ]] || remaining_graphs+=("${resource_name}")
+    done < <(kubectl get "${resource_type}" -n "${NAMESPACE}" -o name 2>/dev/null || true)
+  done < <(kubectl api-resources --api-group=csoc.js2.org --namespaced=true -o name | sort)
+  (( ${#remaining_graphs[@]} == 0 )) \
+    || log::die "Account namespace still contains independently owned graphs: ${remaining_graphs[*]}. Review and delete each graph explicitly before deleting the identity."
   kubectl delete spokeidentity "${IDENTITY}" --ignore-not-found --wait=true --timeout=15m
   kubectl delete immutablespokeconfig "${IDENTITY}" --ignore-not-found --wait=true --timeout=15m
 else
