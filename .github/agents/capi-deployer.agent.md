@@ -25,14 +25,15 @@ the only provider lifecycle owners. Workload clusters are declared as
 
 | File | Purpose |
 |------|---------|
-| `scripts/bootstrap/credentials/create-runtime-cloud-secret.sh` | Creates `openstack-cloud-config` secret in `capo-system` |
+| `scripts/bootstrap/credentials/create-runtime-cloud-secret.sh` | Loads one identity's isolated CAPO/ORC and workload secrets into its account namespace |
 
 ## Constraints
 
 - DO NOT read or expose the contents of `clouds.yaml`.
 - DO NOT provision new clusters by running scripts — day-2 cluster provisioning goes through a PR to `js-poc-csoc-fleet`.
 - DO NOT run a direct provider installation or raw CAPI provisioning path.
-- The RGD in `js-poc-csoc-platform-apis` is the authoritative CAPI graph.
+- The RGD in `js-poc-csoc-app-catalog/rgds/cluster/v1/` is the authoritative
+  CAPI graph; its instances live in `js-poc-csoc-fleet/accounts/`.
 
 ## Approach
 

@@ -38,9 +38,14 @@ bash "${REPO_ROOT}/scripts/tools/scan-secrets.sh"
 retired_pattern="js-poc-csoc-platform"'-apis|csoc-'"platform|hello-"'csoc'
 if rg --line-number "${retired_pattern}" \
     "${REPO_ROOT}" "${CATALOG_ROOT}" "${FLEET_ROOT}" \
-    --glob '!**/.git/**' --glob '!agents/**' --glob '!AGENTS.md' \
+    --glob '!**/.git/**' \
     --glob '!scripts/tools/validate.sh'; then
   log::die "Retired repository, project, or application references remain"
+fi
+if rg --line-number '^kind:[[:space:]]+ApplicationSet$' \
+    "${REPO_ROOT}" "${CATALOG_ROOT}" "${FLEET_ROOT}" \
+    --glob '*.yaml' --glob '*.yml' --glob '!**/.git/**'; then
+  log::die "Tracked ApplicationSet manifest detected"
 fi
 if rg --line-number 'clusterctl[[:space:]]+(init|generate|apply|get kubeconfig)' \
     "${REPO_ROOT}/scripts" "${REPO_ROOT}/Makefile"; then
@@ -88,6 +93,8 @@ done
 [[ ! -e "${REPO_ROOT}/argocd/apps/csoc-baseline.yaml" \
    && ! -d "${REPO_ROOT}/argocd/applicationsets" ]] \
   || log::die "Baseline Applications and ApplicationSets must be removed"
+[[ $(yq -r '.applicationSet.enabled' "${REPO_ROOT}/iac/argocd/values.yaml") == false ]] \
+  || log::die "The unused Argo ApplicationSet controller must remain disabled"
 for kind in SpokeCluster SpokeEnvironmentConfig AutoAllocatedSpokeNetwork DedicatedSpokeNetwork; do
   yq -e ".spec.namespaceResourceWhitelist[] | select(.group == \"csoc.js2.org\" and .kind == \"${kind}\")" \
     "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml" >/dev/null \
@@ -231,6 +238,15 @@ CSOC_DIR="${FLEET_ROOT}/csoc"
 [[ $(yq -r '.kind + ":" + .metadata.name' "${CSOC_DIR}/hello-app.yaml") \
    == CSOCHelloApp:csoc ]] \
   || log::die "Fleet must contain the CSOC-local Hello instance"
+mapfile -t hello_iac_files < <(
+  {
+    git -C "${CATALOG_ROOT}" ls-files 'rgds/workloads/*hello*.yaml'
+    git -C "${FLEET_ROOT}" ls-files '*hello*.yaml'
+  } | sort
+)
+[[ "${hello_iac_files[*]}" == \
+   "accounts/test-poc/hello-app.yaml csoc/hello-app.yaml rgds/workloads/csoc-hello-app.rgd.yaml rgds/workloads/hello-app.rgd.yaml" ]] \
+  || log::die "Expected exactly two Hello RGD definitions and two Hello instances"
 [[ $(yq -r '.kind + ":" + .metadata.name' "${ACCOUNT_DIR}/identity-config.yaml") \
    == ImmutableSpokeConfig:test-poc ]] \
   || log::die "test-poc must own its ImmutableSpokeConfig instance"

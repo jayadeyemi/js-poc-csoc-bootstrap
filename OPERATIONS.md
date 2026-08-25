@@ -80,24 +80,20 @@ kubectl get clusters,openstackclusters,kubeadmcontrolplanes,machinedeployments -
 Repair the Git declaration and let Argo reconcile it. Do not manually replace
 provider CRDs or generated CAPI objects.
 
-## Rotate OpenStack application credentials
-
-1. Create a new restricted application credential in Jetstream2.
-2. Replace the ignored `credentials/runtime-clouds.yaml` atomically and keep mode
-   `0600`.
-3. Run `make preflight` with the new credential.
-4. Run `make capi-secret`. This updates the CAPO secret and the reconciled
-   workload `cloud-config` resource-set payload without printing either secret.
-5. Restart CAPO, OpenStack CCM, and Cinder CSI only if their controllers do not
-   observe the secret update; verify logs before forcing a restart.
-6. Confirm an OpenStack API read, a `LoadBalancer` reconciliation, and a
-   Cinder-backed PVC operation, then revoke the old application credential.
-
 ## Rotate spoke OpenStack credentials
 
-Reload `accounts/<identity>/clouds.yaml` with the credential helper, verify a
-CAPO read, load-balancer reconciliation, and Cinder PVC, then revoke the old
-application credential. Magnum credentials are rotated independently.
+1. Create a new restricted application credential in Jetstream2.
+2. Atomically replace
+   `scripts/host/credentials/accounts/<identity>/clouds.yaml` and retain mode
+   `0600`.
+3. Run `scripts/bootstrap/credentials/create-runtime-cloud-secret.sh <identity>`.
+   The helper verifies the trusted project and updates only that identity's
+   account-scoped CAPO/ORC and workload secrets without printing their values.
+4. Confirm a CAPO read, internal load-balancer reconciliation, and Cinder PVC
+   operation, then revoke the old credential.
+
+Magnum credentials are rotated independently and must never be loaded into a
+spoke account namespace.
 
 ## Cleanup gate
 

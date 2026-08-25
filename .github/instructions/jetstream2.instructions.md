@@ -1,49 +1,55 @@
 ---
 applyTo: "**"
 ---
-# Jetstream2 CSOC — bootstrap repo
+# Jetstream2 CSOC bootstrap conventions
 
-Full reference: [AGENTS.md](../../AGENTS.md) · Four repos: `js-poc-csoc-bootstrap` / `js-poc-csoc-platform-apis` / `js-poc-csoc-fleet` / `js-poc-csoc-app-catalog` at `github.com/jayadeyemi/`
+The active architecture has three repositories:
 
-**Day-2 cluster operations belong in `js-poc-csoc-fleet`**, not in scripts here.
+- `js-poc-csoc-bootstrap`: Magnum, Argo, controllers, projects, and root apps.
+- `js-poc-csoc-app-catalog`: reusable KRO RGD definitions only.
+- `js-poc-csoc-fleet`: CSOC and account/spoke graph instances.
 
-## Conventions
+The platform-APIs repository, ApplicationSets, cluster registration, baseline,
+security, and observability packages are retired and must not be restored.
 
-### Bash scripts
-- All scripts begin with `set -euo pipefail`.
-- Source `scripts/lib/logging.bash` for all log output — never use `echo` directly for status messages.
-- Source `scripts/lib/openstack.bash` for OpenStack operations.
-- Source `scripts/lib/k8s.bash` for Kubernetes operations.
-- Scripts must be idempotent: check current state before creating resources.
-- Use the POSIX path `"$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"` to compute `SCRIPT_DIR`.
+## Bash and IaC
 
-### IaC
-- Parameters live in `*.env` files under `iac/` — no secrets, only configuration.
-- CAPI manifests use `${VARIABLE}` for `envsubst`; do not use Helm-style `{{ }}` syntax.
-- Apply all Kubernetes manifests with `kubectl apply --server-side`.
+- Executable scripts use `set -euo pipefail` and source
+  `scripts/lib/logging.bash`.
+- Use `scripts/lib/openstack.bash` and `scripts/lib/k8s.bash` where applicable.
+- Compute `SCRIPT_DIR` from `${BASH_SOURCE[0]}`.
+- Keep operations idempotent and apply Kubernetes manifests server-side.
+- Run the complete `make validate` gate for coordinated changes.
 
-### Credentials
-- Credentials are **never** committed to git.
-- OpenStack credentials use the **application credential** format (`v3applicationcredential`).
-- The container mounts `credentials/magnum-clouds.yaml` and
-  `credentials/runtime-clouds.yaml` individually and read-only.
-- CAPO reads from the `openstack-cloud-config` secret in `capo-system`.
+## Credentials
 
-### New workload clusters (day-2 GitOps)
-1. Add `customers/<tenant>/<env>/cluster.yaml` (a `SpokeCluster` CR) to `js-poc-csoc-fleet`.
-2. Open a PR — Argo CD applies it, KRO reconciles it → CAPI → Jetstream2 cluster.
-3. There is no direct CAPI provisioning script; CAPI/CAPO lifecycle belongs to
-   Argo CD and CAPI Operator.
+- Never commit, print, or embed credential values or secret references.
+- Magnum uses the separate unrestricted
+  `scripts/host/credentials/magnum-clouds.yaml` credential.
+- Each spoke identity uses a restricted
+  `scripts/host/credentials/accounts/<identity>/clouds.yaml` credential.
+- The loader creates identity-specific CAPO/ORC and workload secrets only in
+  `spokeclusters-<identity>`.
 
-### KRO RGDs
-- `SpokeCluster` RGD lives in `js-poc-csoc-platform-apis/rgds/spoke-cluster.rgd.yaml`.
-- Never rename or remove existing `spec` fields — that creates a new immutable `GraphRevision`.
-- Add new fields as optional with defaults.
+## Fleet and KRO
 
-### Argo CD
-- All Applications must descend from `argocd/app-of-apps.yaml` — never apply orphan Applications.
-- AppProjects must restrict `sourceRepos`, `destinations`, and `clusterResourceWhitelist`.
-- Cluster labels follow `csoc.js2.org/<key>: <value>`.
+- Add CSOC-local instances under `js-poc-csoc-fleet/csoc/`.
+- Add account and spoke instances under
+  `js-poc-csoc-fleet/accounts/<identity>/`.
+- RGD definitions live only under `js-poc-csoc-app-catalog/rgds/`.
+- `SpokeIdentity` is the credential and account boundary.
+- Immutable provider restrictions flow through graph-produced ConfigMaps.
+- `SpokeCluster` exposes only mutable worker bounds.
+- Spoke applications use CAPI addon graphs; CSOC applications use direct KRO
+  graphs. Do not create Argo ApplicationSets or registration labels.
+- Application load balancers remain internal-only and separate from Kubernetes
+  API load balancers.
 
-### Make targets
-Always use `make` targets for standard operations. Run `make help` to see all available targets.
+## Argo
+
+- All Applications descend from `argocd/app-of-apps.yaml`.
+- Exactly two custom projects exist: `rgds` and `csoc-fleet`.
+- AppProjects explicitly restrict repositories, destinations, and resource
+  kinds.
+- Manually dry-run, apply, and wait for new projects, RGDs, CRDs, and trusted
+  instances before enabling Argo ownership.
