@@ -64,6 +64,20 @@ for controller in "${REPO_ROOT}"/controllers/*.yaml; do
   [[ $(yq -r '.spec.project' "${controller}") == rgds ]] \
     || log::die "Controller Application must belong to rgds: ${controller}"
 done
+for resource in \
+  'cert-manager.io:Certificate' \
+  'cert-manager.io:Issuer' \
+  'operator.cluster.x-k8s.io:AddonProvider' \
+  'operator.cluster.x-k8s.io:BootstrapProvider' \
+  'operator.cluster.x-k8s.io:ControlPlaneProvider' \
+  'operator.cluster.x-k8s.io:CoreProvider' \
+  'operator.cluster.x-k8s.io:InfrastructureProvider'; do
+  group=${resource%%:*}
+  kind=${resource#*:}
+  yq -e ".spec.namespaceResourceWhitelist[] | select(.group == \"${group}\" and .kind == \"${kind}\")" \
+    "${REPO_ROOT}/argocd/projects/rgds.yaml" >/dev/null \
+    || log::die "RGD project does not permit controller resource ${resource}"
+done
 [[ $(yq -r '.spec.source.repoURL' "${REPO_ROOT}/argocd/apps/rgds.yaml") \
    == https://github.com/jayadeyemi/js-poc-csoc-app-catalog ]] \
   || log::die "RGDs must be sourced from the app catalog"
