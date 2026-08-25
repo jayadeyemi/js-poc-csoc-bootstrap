@@ -1,15 +1,20 @@
 # argocd
 
-Argo CD configuration for the CSOC management cluster. Applied once by `scripts/bootstrap/argocd/bootstrap-apps.sh`; Argo CD self-manages everything here after that.
+Argo CD configuration for both CSOC profiles. Development selects
+`argocd/apps/` from default branches. Production selects `argocd/prod/apps/`
+from `release/prod` and intentionally has no fleet Application.
 
 ## Structure
 
 ```
-app-of-apps.yaml        root Application — watches the whole argocd/ tree
+app-of-apps.yaml        development root — selects projects and dev apps
 apps/
   controllers.yaml      csoc-controllers Application (sync-wave -50)
   rgds.yaml             rgds Application (sync-wave -5)
   fleet.yaml            csoc-fleet Application (sync-wave 5)
+prod/apps/
+  controllers.yaml      release/prod controller source
+  rgds.yaml             release/prod catalog source; no fleet Application
 projects/
   rgds.yaml             AppProject for controllers and RGD definitions
   csoc-fleet.yaml       AppProject for account-scoped fleet instances
@@ -34,7 +39,7 @@ projects/
 |---------|-------------|---------|
 | `rgds` | bootstrap, app-catalog, chart registries | Controllers and RGD definitions |
 | `csoc-fleet` | fleet | Account-scoped graph instances |
-| `csoc-baseline` | app-catalog, fleet | Trusted CSOC-local and spoke workload graph instances |
+| `csoc-baseline` | app-catalog, fleet | Trusted CSOC-local workload graph instances only |
 
 There is deliberately no `csoc-baseline` Application or ApplicationSet. The
 project is the authorization boundary for trusted workload instances; the

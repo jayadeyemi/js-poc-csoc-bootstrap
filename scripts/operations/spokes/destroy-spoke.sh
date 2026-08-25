@@ -8,6 +8,11 @@ WORKSPACE_ROOT="$(cd "${REPO_ROOT}/.." && pwd)"
 FLEET_ROOT="${FLEET_ROOT:-${WORKSPACE_ROOT}/js-poc-csoc-fleet}"
 source "${REPO_ROOT}/scripts/lib/logging.bash"
 source "${REPO_ROOT}/scripts/lib/credentials.bash"
+source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
+csoc::load_profile "${REPO_ROOT}"
+[[ "${CSOC_FLEET_ENABLED}" == true ]] \
+  || log::die "Profile ${CSOC_PROFILE} has no fleet lifecycle"
+export KUBECONFIG="${KUBECONFIG:-${MAGNUM_KUBECONFIG_DIR}/config}"
 
 usage() {
   printf 'Usage: %s --identity IDENTITY --spoke SPOKE --confirm SPOKE [--delete-identity]\n' "$0" >&2

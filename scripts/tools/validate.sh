@@ -56,6 +56,13 @@ if rg --line-number 'coe cluster template (create|update|delete)' "${REPO_ROOT}/
 fi
 
 log::step 2 "Validating the three-project Argo ownership graph"
+for profile_manifest in iac/csoc/profiles/dev.profile iac/csoc/profiles/prod.profile; do
+  git -C "${REPO_ROOT}" ls-files --error-unmatch "${profile_manifest}" >/dev/null \
+    || log::die "CSOC environment selection must be tracked: ${profile_manifest}"
+  if git -C "${REPO_ROOT}" check-ignore -q "${profile_manifest}"; then
+    log::die "CSOC environment selection must not be ignored: ${profile_manifest}"
+  fi
+done
 mapfile -t project_names < <(
   for project_file in "${REPO_ROOT}"/argocd/projects/*.yaml; do
     yq -r '.metadata.name' "${project_file}"
@@ -90,6 +97,30 @@ done
   || log::die "RGD Application path is incorrect"
 [[ $(yq -r '.spec.source.path' "${REPO_ROOT}/argocd/apps/fleet.yaml") == . ]] \
   || log::die "Fleet Application must source the fleet root"
+[[ $(yq -r '.spec.source.targetRevision' "${REPO_ROOT}/argocd/apps/rgds.yaml") == main \
+   && $(yq -r '.spec.source.targetRevision' "${REPO_ROOT}/argocd/apps/fleet.yaml") == main ]] \
+  || log::die "Development RGD and fleet Applications must track main"
+[[ $(yq -r '.spec.source.targetRevision' "${REPO_ROOT}/argocd/prod/apps/rgds.yaml") == release/prod \
+   && $(yq -r '.spec.source.targetRevision' "${REPO_ROOT}/argocd/prod/apps/controllers.yaml") == release/prod \
+   && ! -e "${REPO_ROOT}/argocd/prod/apps/fleet.yaml" ]] \
+  || log::die "Production must track release/prod for controllers/RGDs and omit fleet"
+source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
+CSOC_PROFILE=dev csoc::load_profile "${REPO_ROOT}"
+[[ "${MAGNUM_CLUSTER_NAME}" == js2-mgmt-cluster-2 \
+   && "${MAGNUM_MASTER_COUNT}:${MAGNUM_MASTER_FLAVOR}" == 1:m3.quad \
+   && "${CSOC_FLEET_ENABLED}" == true ]] \
+  || log::die "Development profile does not bind the existing small CSOC"
+unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR MAGNUM_MASTER_COUNT \
+  MAGNUM_MASTER_FLAVOR MAGNUM_NODE_COUNT MAGNUM_WORKER_FLAVOR MAGNUM_MIN_NODE_COUNT \
+  MAGNUM_MAX_NODE_COUNT MAGNUM_EXPECTED_INITIAL_NODES
+CSOC_PROFILE=prod csoc::load_profile "${REPO_ROOT}"
+[[ "${MAGNUM_MASTER_COUNT}:${MAGNUM_MASTER_FLAVOR}" == 3:m3.quad \
+   && "${CSOC_FLEET_ENABLED}" == false \
+   && "${CSOC_CATALOG_REVISION}" == release/prod ]] \
+  || log::die "Production profile must freeze an HA control plane, use release/prod, and disable fleet"
+unset CSOC_PROFILE MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR \
+  MAGNUM_MASTER_COUNT MAGNUM_MASTER_FLAVOR MAGNUM_NODE_COUNT MAGNUM_WORKER_FLAVOR \
+  MAGNUM_MIN_NODE_COUNT MAGNUM_MAX_NODE_COUNT MAGNUM_EXPECTED_INITIAL_NODES
 [[ ! -e "${REPO_ROOT}/argocd/apps/csoc-baseline.yaml" \
    && ! -d "${REPO_ROOT}/argocd/applicationsets" ]] \
   || log::die "Baseline Applications and ApplicationSets must be removed"
@@ -115,6 +146,9 @@ yq -e '.spec.namespaceResourceWhitelist[] | select(.group == "apps.csoc.js2.org"
 yq -e '.spec.namespaceResourceWhitelist[] | select(.group == "apps.csoc.js2.org" and .kind == "HelloApp")' \
   "${REPO_ROOT}/argocd/projects/csoc-baseline.yaml" >/dev/null \
   || log::die "CSOC baseline project does not permit trusted HelloApp instances"
+[[ $(yq -r '.spec.destinations | map(.namespace) | join(",")' \
+     "${REPO_ROOT}/argocd/projects/csoc-baseline.yaml") == kro-system ]] \
+  || log::die "CSOC baseline project must not target spokeclusters namespaces"
 [[ $(yq -r '.spec.orphanedResources.warn' "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml") == true ]] \
   || log::die "Fleet project must warn about Git-retired resources awaiting deliberate teardown"
 [[ $(yq -r '.spec.syncPolicy.automated.prune' "${REPO_ROOT}/argocd/apps/fleet.yaml") == false ]] \
@@ -286,15 +320,25 @@ done
 [[ $(yq -r '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.managedSecurityGroups.allowAllInClusterTraffic' "${SPOKE_RGD}") == false ]] \
   || log::die "Spoke security groups must not allow all cluster traffic"
 
-log::step 5 "Validating the inactive account templates and unified Hello delivery"
-ACCOUNT_DIR="${FLEET_ROOT}/examples/accounts/test-poc"
+log::step 5 "Validating the development account and unified Hello delivery"
+ACCOUNT_DIR="${FLEET_ROOT}/accounts/test-poc"
+EXAMPLE_ACCOUNT_DIR="${FLEET_ROOT}/examples/accounts/test-poc"
 CSOC_DIR="${FLEET_ROOT}/csoc"
 [[ -f "${FLEET_ROOT}/kustomization.yaml" && -f "${CSOC_DIR}/kustomization.yaml" ]] \
   || log::die "Fleet root must expose its CSOC and account packages"
-[[ -f "${FLEET_ROOT}/accounts/kustomization.yaml" && -f "${ACCOUNT_DIR}/kustomization.yaml" ]] \
-  || log::die "Fleet must provide an account entrypoint and inactive example package"
-[[ $(yq -r '.resources | length' "${FLEET_ROOT}/accounts/kustomization.yaml") == 0 ]] \
-  || log::die "No spoke account should remain active after the requested retirement"
+[[ -f "${FLEET_ROOT}/accounts/kustomization.yaml" && -f "${ACCOUNT_DIR}/kustomization.yaml" \
+   && -f "${EXAMPLE_ACCOUNT_DIR}/kustomization.yaml" ]] \
+  || log::die "Fleet must provide active development and inactive example packages"
+[[ $(yq -r '.resources | join(",")' "${FLEET_ROOT}/accounts/kustomization.yaml") == test-poc ]] \
+  || log::die "Development fleet must activate only test-poc"
+while IFS= read -r active_manifest; do
+  relative_manifest=${active_manifest#"${FLEET_ROOT}/"}
+  git -C "${FLEET_ROOT}" ls-files --error-unmatch "${relative_manifest}" >/dev/null \
+    || log::die "Active GitOps manifest is not tracked: ${relative_manifest}"
+  if git -C "${FLEET_ROOT}" check-ignore -q "${relative_manifest}"; then
+    log::die "Active GitOps manifest is ignored: ${relative_manifest}"
+  fi
+done < <(find "${ACCOUNT_DIR}" -maxdepth 1 -type f \( -name '*.yaml' -o -name '*.yml' \) | sort)
 [[ $(yq -r '.kind + ":" + .metadata.name' "${CSOC_DIR}/hello-app.yaml") \
    == HelloApp:csoc ]] \
   || log::die "Fleet must contain the CSOC-local Hello instance"
@@ -309,15 +353,15 @@ mapfile -t hello_iac_files < <(
   || log::die "Expected exactly one active Hello RGD and one active CSOC instance"
 [[ $(yq -r '.kind + ":" + .metadata.name' "${ACCOUNT_DIR}/identity-config.yaml") \
    == ImmutableSpokeConfig:test-poc ]] \
-  || log::die "The inactive example must include ImmutableSpokeConfig"
+  || log::die "The development account must include ImmutableSpokeConfig"
 [[ $(yq -r '.kind + ":" + .metadata.name' "${ACCOUNT_DIR}/identity.yaml") \
    == SpokeIdentity:test-poc ]] \
   || log::die "test-poc must use the SpokeIdentity API"
-for file in spoke-config.yaml network-dedicated.yaml cluster.yaml hello-app.yaml; do
+for file in spoke-config.yaml network.yaml cluster.yaml hello-app.yaml; do
   [[ $(yq -r '.metadata.namespace' "${ACCOUNT_DIR}/${file}") == spokeclusters-test-poc ]] \
     || log::die "${file} must be isolated in spokeclusters-test-poc"
 done
-for file in spoke-config.yaml network-dedicated.yaml cluster.yaml hello-app.yaml; do
+for file in spoke-config.yaml network.yaml cluster.yaml hello-app.yaml; do
   [[ $(yq -r '.metadata.name' "${ACCOUNT_DIR}/${file}") == poc-tenant-dev ]] \
     || log::die "${file} must compose the poc-tenant-dev graph"
 done
@@ -325,6 +369,16 @@ min_nodes=$(yq -er '.spec.kubernetes.minNodes' "${ACCOUNT_DIR}/cluster.yaml")
 max_nodes=$(yq -er '.spec.kubernetes.maxNodes' "${ACCOUNT_DIR}/cluster.yaml")
 (( min_nodes >= 1 && min_nodes <= max_nodes && max_nodes <= 4 )) \
   || log::die "Invalid test-poc worker bounds"
+[[ "${min_nodes}:${max_nodes}" == 1:2 ]] \
+  || log::die "Development test-poc must use 1..2 worker bounds"
+[[ $(yq -r '.spec.compute.controlPlaneFlavor + ":" + .spec.compute.generalWorkerFlavor' \
+     "${ACCOUNT_DIR}/identity-config.yaml") == m3.small:m3.quad ]] \
+  || log::die "Development test-poc must use m3.small control plane and m3.quad workers"
+[[ $(yq -r '.spec.network.apiServerAllowedCIDR' "${ACCOUNT_DIR}/identity-config.yaml") \
+   == 149.165.155.5/32 ]] \
+  || log::die "Development spoke API must be restricted to the reviewed CSOC router SNAT address"
+[[ ! -e "${ACCOUNT_DIR}/network-dedicated.yaml" ]] \
+  || log::die "Active accounts must expose the selected graph only as network.yaml"
 [[ $(yq -r '.spec.kubernetes | keys | join(",")' "${ACCOUNT_DIR}/identity-config.yaml") \
    == version,controlPlaneCount ]] \
   || log::die "test-poc immutable config must not contain scale bounds or unsupported worker classes"

@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 WORKSPACE_ROOT="$(cd "${REPO_ROOT}/.." && pwd)"
 source "${REPO_ROOT}/scripts/lib/logging.bash"
+source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
+csoc::load_profile "${REPO_ROOT}"
 
 IMAGE_NAME="${JETSTREAM_IMAGE_NAME:-jetstream2-mgmt}"
 IMAGE_TAG="${JETSTREAM_IMAGE_TAG:-latest}"
@@ -16,7 +18,9 @@ CONTAINER_MAGNUM_CLOUDS_YAML=/run/csoc-credentials/magnum-clouds.yaml
 CONTAINER_RUNTIME_CREDENTIALS_DIR=/run/csoc-credentials/accounts
 
 # Kubeconfig directory on the host — persists kubeconfigs across container runs
-KUBECONFIG_DIR="${KUBECONFIG_DIR:-${HOME}/.kube}"
+KUBECONFIG_DIR="${KUBECONFIG_DIR:-${MAGNUM_KUBECONFIG_DIR}}"
+CSOC_CONTAINER_DETACH="${CSOC_CONTAINER_DETACH:-false}"
+CSOC_CONTAINER_NAME="${CSOC_CONTAINER_NAME:-jetstream2-csoc-${CSOC_PROFILE}-$$}"
 
 [[ -f "${HOST_MAGNUM_CLOUDS_YAML}" ]] \
   || log::die "Magnum credential file not found: ${HOST_MAGNUM_CLOUDS_YAML}"
@@ -26,20 +30,28 @@ KUBECONFIG_DIR="${KUBECONFIG_DIR:-${HOME}/.kube}"
 mkdir -p "${KUBECONFIG_DIR}" "${REPO_ROOT}/.state"
 chmod 700 "${KUBECONFIG_DIR}" "${REPO_ROOT}/.state"
 
-log::info "Starting management container (${IMAGE_NAME}:${IMAGE_TAG})"
+log::info "Starting ${CSOC_PROFILE} management container (${IMAGE_NAME}:${IMAGE_TAG})"
 log::info "  credentials : separated Magnum/runtime files → /run/csoc-credentials (ro)"
 log::info "  kubeconfig  : ${KUBECONFIG_DIR}  →  /home/jetstream/.kube"
 log::info "  workspace   : ${WORKSPACE_ROOT}  →  /workspace"
 
 docker_args=(--rm)
-if [[ -t 0 && -t 1 ]]; then
+if [[ "${CSOC_CONTAINER_DETACH}" == true ]]; then
+  docker_args+=(--detach)
+elif [[ -t 0 && -t 1 ]]; then
   docker_args+=(--interactive --tty)
 fi
 command_args=("$@")
-(( ${#command_args[@]} > 0 )) || command_args=(/bin/bash)
+if (( ${#command_args[@]} == 0 )); then
+  if [[ "${CSOC_CONTAINER_DETACH}" == true ]]; then
+    command_args=(sleep infinity)
+  else
+    command_args=(/bin/bash)
+  fi
+fi
 
 docker run "${docker_args[@]}" \
-  --name "jetstream2-mgmt-$$" \
+  --name "${CSOC_CONTAINER_NAME}" \
   --user "$(id -u):$(id -g)" \
   --env HOME=/home/jetstream \
   --env SHELL=/bin/bash \
@@ -54,5 +66,6 @@ docker run "${docker_args[@]}" \
   --env "RUNTIME_CREDENTIALS_DIR=${CONTAINER_RUNTIME_CREDENTIALS_DIR}" \
   --env "OS_CLIENT_CONFIG_FILE=${CONTAINER_MAGNUM_CLOUDS_YAML}" \
   --env "OS_CLOUD=${OS_CLOUD:-openstack}" \
+  --env "CSOC_PROFILE=${CSOC_PROFILE}" \
   "${IMAGE_NAME}:${IMAGE_TAG}" \
   "${command_args[@]}"

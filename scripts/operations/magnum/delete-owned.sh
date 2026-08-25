@@ -7,7 +7,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 source "${REPO_ROOT}/scripts/lib/logging.bash"
 source "${REPO_ROOT}/scripts/lib/openstack.bash"
 source "${REPO_ROOT}/scripts/lib/credentials.bash"
-source "${REPO_ROOT}/iac/magnum/cluster.env"
+source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
+csoc::load_profile "${REPO_ROOT}"
 
 (( $# == 1 )) || log::die "Usage: $0 <reviewed-cluster-uuid>"
 REQUESTED_ID=$1

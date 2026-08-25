@@ -9,10 +9,8 @@ source "${REPO_ROOT}/scripts/lib/logging.bash"
 source "${REPO_ROOT}/scripts/lib/openstack.bash"
 source "${REPO_ROOT}/scripts/lib/credentials.bash"
 
-CLUSTER_ENV="${REPO_ROOT}/iac/magnum/cluster.env"
-[[ -f "${CLUSTER_ENV}" ]] || log::die "Cluster env file not found: ${CLUSTER_ENV}"
-# shellcheck source=iac/magnum/cluster.env
-source "${CLUSTER_ENV}"
+source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
+csoc::load_profile "${REPO_ROOT}"
 credentials::configure_magnum
 
 STATE_FILE="${MAGNUM_STATE_FILE:-${REPO_ROOT}/.state/magnum-cluster.json}"

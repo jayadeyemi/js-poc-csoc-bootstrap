@@ -19,7 +19,8 @@ You are a specialist in the Jetstream2 management container. Your job is to buil
 - DO NOT bake credentials or secrets into the image.
 - DO NOT use the `root` user as the default container user.
 - ALWAYS pin tool versions as `ARG` values in the Dockerfile.
-- DO NOT run containers without the `--rm` flag unless the user explicitly asks.
+- Persistent `dev` and `prod` operator containers may run simultaneously when
+  explicitly requested; both retain `--rm` and contain no GitOps controller.
 
 ## Approach
 

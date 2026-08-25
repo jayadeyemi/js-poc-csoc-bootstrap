@@ -13,7 +13,9 @@ instances have been manually server-side dry-run/applied in dependency order.
 
 | Location | Required action |
 |---|---|
-| `iac/magnum/cluster.env` | Review the provider-owned Magnum template UUID, fixed management network/subnet, flavors, keypair, volume size, and worker bounds. |
+| `iac/csoc/profiles/dev.profile` | Retain the owned `js2-mgmt-cluster-2` state/kubeconfig paths and default-branch Git revisions. This file is tracked. |
+| `iac/csoc/profiles/prod.profile` | Before any production create, review the immutable three-member `m3.quad` control plane, distinct state/kubeconfig paths, and `release/prod` revisions. This file is tracked. |
+| `iac/magnum/cluster.env` | Review shared provider template, network, keypair, volume, and timeout settings. |
 | `scripts/host/credentials/magnum-clouds.yaml` | Copy its example, insert a short-lived unrestricted Magnum-only application credential, and set mode `0600`. |
 | `scripts/host/credentials/accounts/<identity>/clouds.yaml` | Create one different restricted credential per active spoke account, even when it uses the same project as CSOC; set mode `0600`. |
 | `js-poc-csoc-fleet/accounts/kustomization.yaml` | List only account directories that should be actively reconciled. An empty list creates no spokes. |
@@ -30,6 +32,11 @@ Start from `js-poc-csoc-fleet/examples/accounts/test-poc/`. Copy only the
 selected network variant as `network.yaml`; do not activate all variants. The
 example API CIDR and exact import UUIDs are deliberate non-working placeholders
 and must be replaced before activation.
+
+The development profile currently activates `accounts/test-poc` with one
+`m3.small` control plane and `1..2` `m3.quad` workers. Its spoke API allow-list
+is the exact reviewed shared-router SNAT `/32`. The production profile has no
+fleet Application, so it deploys no CSOC or spoke instances.
 
 ## Immutable and mutable boundary
 
@@ -49,16 +56,17 @@ then create a new instance. Only `SpokeCluster.spec.kubernetes.minNodes` and
 ## Ordered gate
 
 1. Run `make validate`, `make security-scan`, `make container-build`, and
-   `make preflight`; confirm the Magnum dry-run resolves only the provider-owned
+   `make preflight PROFILE=dev`; confirm the Magnum dry-run resolves only the provider-owned
    template.
 2. Create/verify the Magnum CSOC and obtain its certificate kubeconfig.
 3. Install Argo CD itself, then run `make argocd-manual-smoke`.
-4. Run `make capi-secret IDENTITY=<identity>` for each active account. The
+4. Run `make capi-secret PROFILE=dev IDENTITY=<identity>` for each active account. The
    loader verifies restriction, expiry, project match, and CSOC/spoke
    credential separation without printing credential values.
-5. Run `make argocd-bootstrap`. The script manually applies and waits for
-   AppProjects, controllers, every RGD/CRD, CSOC Hello, and each listed account
-   instance before it creates the Argo root Applications.
+5. Run `make argocd-bootstrap PROFILE=dev`. The script archives the exact
+   configured remote branches, then manually applies and waits for AppProjects,
+   controllers, every RGD/CRD, CSOC Hello, and each listed account instance
+   before it creates the Argo root Applications.
 6. Accept each spoke only after CAPI readiness, Calico, CCM, Cinder CSI, PVC,
    autoscaling bounds, and its internal Hello response pass.
 

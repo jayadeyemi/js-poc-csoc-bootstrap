@@ -12,8 +12,8 @@ tools:
 
 **Prerequisite:** Agent 04 completed, the intended account is explicitly listed
 in `accounts/kustomization.yaml`, and all controller/generated CRDs are
-Established. `test-poc` below is an inactive example until deliberately
-activated from the fleet examples.
+Established. `test-poc` is the active development profile account; production
+has no fleet Application.
 **Duration:** 15–30 minutes for full provisioning.
 
 ## Container invocation pattern
@@ -31,7 +31,7 @@ KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh \
 ```
 
 Confirm:
-- `spec.kubernetes.minNodes: 2`, `maxNodes: 4`
+- `spec.kubernetes.minNodes: 1`, `maxNodes: 2`
 - `test-poc-compute-service-config` contains one approved `generalWorkerFlavor`
 - no immutable ConfigMap or environment instance contains `minWorkers`,
   `maxWorkers`, GPU, high-memory, or `nodeClass` fields
@@ -83,9 +83,9 @@ KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh \
 
 ## Step 4 — Monitor worker MachineDeployment
 
-Workers (`minNodes: 2`, approved general flavor `m3.medium`) are created after
+Workers (`minNodes: 1`, approved general flavor `m3.quad`) are created after
 the control plane is Ready. Scaling may change the replica count within the
-mutable `2..4` bounds; it does not change the worker flavor.
+mutable `1..2` bounds; it does not change the worker flavor.
 
 ```bash
 KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh bash -c '
@@ -101,7 +101,7 @@ KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh \
     -o jsonpath='{.status.readyReplicas}/{.status.replicas}{"\n"}'
 ```
 
-Expected: `2/2`.
+Expected initially: `1/1`.
 
 ## Step 5 — Verify addons via HelmChartProxy
 

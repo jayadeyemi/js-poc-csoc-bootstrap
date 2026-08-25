@@ -9,7 +9,8 @@ source "${REPO_ROOT}/scripts/lib/openstack.bash"
 source "${REPO_ROOT}/scripts/lib/k8s.bash"
 source "${REPO_ROOT}/scripts/lib/credentials.bash"
 
-source "${REPO_ROOT}/iac/magnum/cluster.env"
+source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
+csoc::load_profile "${REPO_ROOT}"
 
 KUBECONFIG_DIR="${MAGNUM_KUBECONFIG_DIR:-${HOME}/.kube}"
 KUBECONFIG_FILE="${KUBECONFIG_DIR}/${MAGNUM_CLUSTER_NAME}.yaml"

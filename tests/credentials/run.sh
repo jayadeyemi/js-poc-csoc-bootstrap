@@ -66,6 +66,7 @@ export FLEET_ROOT="${TEST_ROOT}/fleet"
 export MAGNUM_CLOUDS_YAML="${TEST_ROOT}/magnum-clouds.yaml"
 export FAKE_KUBECTL_LOG="${TEST_ROOT}/kubectl.log"
 export FAKE_KUBECTL_STATE="${TEST_ROOT}/kube-state"
+export CSOC_TEST_LOCAL_FLEET_SOURCE=true
 
 run_loader() {
   bash "${REPO_ROOT}/scripts/bootstrap/credentials/create-runtime-cloud-secret.sh" --all \

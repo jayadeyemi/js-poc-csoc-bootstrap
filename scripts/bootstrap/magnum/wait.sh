@@ -8,7 +8,8 @@ source "${REPO_ROOT}/scripts/lib/logging.bash"
 source "${REPO_ROOT}/scripts/lib/openstack.bash"
 source "${REPO_ROOT}/scripts/lib/credentials.bash"
 
-source "${REPO_ROOT}/iac/magnum/cluster.env"
+source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
+csoc::load_profile "${REPO_ROOT}"
 
 TIMEOUT="${MAGNUM_WAIT_TIMEOUT:-2700}"
 INTERVAL="${MAGNUM_WAIT_INTERVAL:-15}"

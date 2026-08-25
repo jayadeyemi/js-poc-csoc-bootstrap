@@ -7,7 +7,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 source "${REPO_ROOT}/scripts/lib/logging.bash"
 source "${REPO_ROOT}/scripts/lib/openstack.bash"
 source "${REPO_ROOT}/scripts/lib/credentials.bash"
-source "${REPO_ROOT}/iac/magnum/cluster.env"
+source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
+csoc::load_profile "${REPO_ROOT}"
 
 STATE_FILE="${MAGNUM_STATE_FILE:-${REPO_ROOT}/.state/magnum-cluster.json}"
 STATE_DIR=$(dirname "${STATE_FILE}")
@@ -15,10 +16,28 @@ KUBECONFIG_DIR="${MAGNUM_KUBECONFIG_DIR:-${HOME}/.kube}"
 MAGNUM_CREDENTIAL_FILE=$(credentials::magnum_file)
 RUNTIME_CREDENTIAL_FILE=$(credentials::runtime_file)
 
-for required_command in openstack jq; do
+for required_command in git openstack jq; do
   command -v "${required_command}" >/dev/null 2>&1 \
     || log::die "Required command not found: ${required_command}"
 done
+
+(( MAGNUM_MASTER_COUNT == 1 || MAGNUM_MASTER_COUNT == 3 )) \
+  || log::die "Magnum control plane must contain either 1 development or 3 HA members"
+(( MAGNUM_EXPECTED_INITIAL_NODES == MAGNUM_MASTER_COUNT + MAGNUM_NODE_COUNT )) \
+  || log::die "Expected initial node count does not match immutable masters plus initial workers"
+if [[ "${CSOC_PROFILE}" == prod ]]; then
+  [[ "${CSOC_FLEET_ENABLED}" == false ]] \
+    || log::die "Production fleet must remain disabled"
+  for repository_revision in \
+    "${REPO_ROOT}:${CSOC_BOOTSTRAP_REVISION}" \
+    "${REPO_ROOT}/../js-poc-csoc-app-catalog:${CSOC_CATALOG_REVISION}"; do
+    repository=${repository_revision%:*}
+    revision=${repository_revision##*:}
+    git -C "${repository}" ls-remote --exit-code --heads origin \
+      "refs/heads/${revision}" >/dev/null \
+      || log::die "Production release branch is unavailable: ${repository}@${revision}"
+  done
+fi
 
 log::step 1 "Checking separated OpenStack credentials and local state paths"
 credentials::require_private_file "${MAGNUM_CREDENTIAL_FILE}" Magnum
@@ -177,6 +196,10 @@ if (( ${#MATCHING_CLUSTER_IDS[@]} == 1 )); then
   OWNED_CLUSTER_ID=$(os::verify_owned_cluster "${STATE_FILE}" "${MAGNUM_CLUSTER_NAME}")
   [[ "${OWNED_CLUSTER_ID}" == "${MATCHING_CLUSTER_IDS[0]}" ]] \
     || log::die "Existing cluster does not match bootstrap ownership state"
+  OWNED_CLUSTER_JSON=$(openstack coe cluster show "${OWNED_CLUSTER_ID}" -f json)
+  [[ $(jq -r '.master_count' <<<"${OWNED_CLUSTER_JSON}") == "${MAGNUM_MASTER_COUNT}" \
+     && $(jq -r '.master_flavor_id' <<<"${OWNED_CLUSTER_JSON}") == "${MAGNUM_MASTER_FLAVOR}" ]] \
+    || log::die "Owned cluster control plane differs from immutable ${CSOC_PROFILE} profile (${MAGNUM_MASTER_COUNT} x ${MAGNUM_MASTER_FLAVOR})"
   log::info "Existing owned cluster: ${OWNED_CLUSTER_ID}"
 elif [[ -f "${STATE_FILE}" ]]; then
   log::die "Ownership state exists but '${MAGNUM_CLUSTER_NAME}' is not visible; inspect ${STATE_FILE}"
@@ -187,3 +210,4 @@ log::info "  template : ${MAGNUM_TEMPLATE_NAME} (${MAGNUM_TEMPLATE_ID})"
 log::info "  image    : ${IMAGE_NAME}"
 log::info "  keypair  : ${MAGNUM_KEYPAIR}"
 log::info "  cluster  : ${MAGNUM_CLUSTER_NAME}"
+log::info "  profile  : ${CSOC_PROFILE} (${MAGNUM_MASTER_COUNT} x ${MAGNUM_MASTER_FLAVOR} control plane)"

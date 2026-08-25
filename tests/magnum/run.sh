@@ -19,6 +19,7 @@ export MAGNUM_CLOUDS_YAML="${TEST_ROOT}/credentials/magnum-clouds.yaml"
 export RUNTIME_CLOUDS_YAML="${TEST_ROOT}/credentials/runtime-clouds.yaml"
 export MAGNUM_STATE_FILE="${TEST_ROOT}/state/magnum-cluster.json"
 export MAGNUM_KUBECONFIG_DIR="${TEST_ROOT}/home/.kube"
+export MAGNUM_CLUSTER_NAME=js2-mgmt-cluster
 export FAKE_CREATE_LOG="${TEST_ROOT}/create.log"
 export FAKE_CONFIG_LOG="${TEST_ROOT}/config.log"
 export FAKE_DELETE_LOG="${TEST_ROOT}/delete.log"
@@ -52,6 +53,14 @@ expect_fail() {
 expect_pass "cluster name supports an isolated environment override" \
   bash -c 'MAGNUM_CLUSTER_NAME=js2-mgmt-cluster-2; export MAGNUM_CLUSTER_NAME; source "$1"; [[ "$MAGNUM_CLUSTER_NAME" == js2-mgmt-cluster-2 ]]' \
   _ "${REPO_ROOT}/iac/magnum/cluster.env"
+
+expect_pass "dev profile binds the existing CSOC ownership and default branches" \
+  bash -c 'unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR; source "$1"; csoc::load_profile "$2"; [[ "$MAGNUM_CLUSTER_NAME" == js2-mgmt-cluster-2 && "$MAGNUM_STATE_FILE" == "$2/.state/magnum-cluster-2.json" && "$CSOC_CATALOG_REVISION" == main && "$CSOC_FLEET_ENABLED" == true ]]' \
+  _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}"
+
+expect_pass "prod profile freezes an HA control plane and disables fleet" \
+  bash -c 'unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR; CSOC_PROFILE=prod; export CSOC_PROFILE; source "$1"; csoc::load_profile "$2"; [[ "$MAGNUM_MASTER_COUNT" == 3 && "$MAGNUM_MASTER_FLAVOR" == m3.quad && "$CSOC_CATALOG_REVISION" == release/prod && "$CSOC_FLEET_ENABLED" == false ]]' \
+  _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}"
 
 expect_pass "preflight accepts separated credentials and exact infrastructure" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"

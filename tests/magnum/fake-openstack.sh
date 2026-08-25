@@ -110,7 +110,7 @@ case "${args}" in
       [[ -n "${line}" ]] || line=$(tail -n 1 "${FAKE_WAIT_SEQUENCE}")
       printf '%s\n' "${line}"
     else
-      printf '{"uuid":"%s","name":"js2-mgmt-cluster","status":"%s","health_status":"%s","status_reason":null,"updated_at":"2099-01-01T00:00:00Z","stack_id":"js2-stack","api_address":"https://10.0.0.1:6443","node_addresses":["10.0.0.2"],"master_addresses":["10.0.0.1"],"labels":{"auto_scaling_enabled":"%s","min_node_count":"1","max_node_count":"2"}}\n' \
+      printf '{"uuid":"%s","name":"js2-mgmt-cluster","status":"%s","health_status":"%s","status_reason":null,"updated_at":"2099-01-01T00:00:00Z","stack_id":"js2-stack","api_address":"https://10.0.0.1:6443","node_addresses":["10.0.0.2"],"master_addresses":["10.0.0.1"],"master_count":1,"master_flavor_id":"m3.quad","labels":{"auto_scaling_enabled":"%s","min_node_count":"1","max_node_count":"2"}}\n' \
         "${cluster_id}" "${FAKE_CLUSTER_STATUS:-CREATE_COMPLETE}" "${FAKE_CLUSTER_HEALTH:-HEALTHY}" \
         "${FAKE_AUTO_SCALING_ENABLED:-true}"
     fi

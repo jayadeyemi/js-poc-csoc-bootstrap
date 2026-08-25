@@ -8,15 +8,46 @@ WORKSPACE_ROOT="$(cd "${REPO_ROOT}/.." && pwd)"
 CATALOG_ROOT="${APP_CATALOG_ROOT:-${WORKSPACE_ROOT}/js-poc-csoc-app-catalog}"
 FLEET_ROOT="${FLEET_ROOT:-${WORKSPACE_ROOT}/js-poc-csoc-fleet}"
 source "${REPO_ROOT}/scripts/lib/logging.bash"
+source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
+csoc::load_profile "${REPO_ROOT}"
+export KUBECONFIG="${KUBECONFIG:-${MAGNUM_KUBECONFIG_DIR}/config}"
 
-APP_OF_APPS="${REPO_ROOT}/argocd/app-of-apps.yaml"
-PROJECT_DIR="${REPO_ROOT}/argocd/projects"
-APPLICATION_DIR="${REPO_ROOT}/argocd/apps"
-CONTROLLER_DIR="${REPO_ROOT}/controllers"
-RGD_DIR="${CATALOG_ROOT}/rgds"
+SOURCE_ROOT=$(mktemp -d)
+cleanup_sources() {
+  rm -rf -- "${SOURCE_ROOT}"
+}
+trap cleanup_sources EXIT
+
+archive_revision() {
+  local repository=$1 revision=$2 destination=$3
+  mkdir -p "${destination}"
+  git -C "${repository}" fetch --quiet origin \
+    "+refs/heads/${revision}:refs/remotes/origin/${revision}" \
+    || log::die "Required Git branch is unavailable: ${repository}@${revision}"
+  git -C "${repository}" archive "refs/remotes/origin/${revision}" | tar -x -C "${destination}"
+}
+
+BOOTSTRAP_SOURCE="${SOURCE_ROOT}/bootstrap"
+CATALOG_SOURCE="${SOURCE_ROOT}/catalog"
+FLEET_SOURCE="${SOURCE_ROOT}/fleet"
+archive_revision "${REPO_ROOT}" "${CSOC_BOOTSTRAP_REVISION}" "${BOOTSTRAP_SOURCE}"
+archive_revision "${CATALOG_ROOT}" "${CSOC_CATALOG_REVISION}" "${CATALOG_SOURCE}"
+if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
+  archive_revision "${FLEET_ROOT}" "${CSOC_FLEET_REVISION}" "${FLEET_SOURCE}"
+fi
+
+APP_OF_APPS="${BOOTSTRAP_SOURCE}/${CSOC_ARGO_ROOT_MANIFEST_REL}"
+PROJECT_DIR="${BOOTSTRAP_SOURCE}/argocd/projects"
+CONTROLLER_DIR="${BOOTSTRAP_SOURCE}/controllers"
+if [[ "${CSOC_PROFILE}" == prod ]]; then
+  APPLICATION_DIR="${BOOTSTRAP_SOURCE}/argocd/prod/apps"
+else
+  APPLICATION_DIR="${BOOTSTRAP_SOURCE}/argocd/apps"
+fi
+RGD_DIR="${CATALOG_SOURCE}/rgds"
 RGD_PACKAGE_DIR="${RGD_DIR}/test-poc"
-ACCOUNTS_DIR="${FLEET_ROOT}/accounts"
-CSOC_DIR="${FLEET_ROOT}/csoc"
+ACCOUNTS_DIR="${FLEET_SOURCE}/accounts"
+CSOC_DIR="${FLEET_SOURCE}/csoc"
 GATE_CONFIGMAP=argocd-manual-manifest-gate
 ARGO_FIELD_MANAGER=csoc-bootstrap
 
@@ -60,14 +91,30 @@ wait_instance_ready() {
     --timeout="${timeout}" || log::die "${resource}/${name} did not become ready"
 }
 
+apply_profile_application() {
+  local application=$1 manifest
+  case "${application}" in
+    csoc-controllers) manifest="${APPLICATION_DIR}/controllers.yaml" ;;
+    csoc-fleet) manifest="${APPLICATION_DIR}/fleet.yaml" ;;
+    rgds) manifest="${APPLICATION_DIR}/rgds.yaml" ;;
+    *) log::die "Unknown profile Application: ${application}" ;;
+  esac
+  [[ -f "${manifest}" && $(yq -r '.kind' "${manifest}") == Application ]] \
+    || log::die "Profile ${CSOC_PROFILE} does not declare Application/${application}"
+  apply_manifest "${manifest}"
+}
+
 log::step 1 "Verifying manual manifest gate and repository layout"
 kubectl get deployment argocd-server -n argocd >/dev/null \
   || log::die "Argo CD not found. Run 'make argocd-install' first."
 kubectl get configmap "${GATE_CONFIGMAP}" -n argocd >/dev/null \
   || log::die "Manual manifest gate missing. Run 'make argocd-manual-smoke' first."
-[[ -f "${RGD_DIR}/kustomization.yaml" && -f "${ACCOUNTS_DIR}/kustomization.yaml" \
-   && -f "${CSOC_DIR}/kustomization.yaml" ]] \
-  || log::die "RGD definitions or fleet entrypoints are unavailable"
+[[ -f "${RGD_DIR}/kustomization.yaml" ]] \
+  || log::die "RGD definitions are unavailable for ${CSOC_CATALOG_REVISION}"
+if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
+  [[ -f "${ACCOUNTS_DIR}/kustomization.yaml" && -f "${CSOC_DIR}/kustomization.yaml" ]] \
+    || log::die "Fleet entrypoints are unavailable for ${CSOC_FLEET_REVISION}"
+fi
 
 log::step 2 "Applying the rgds, csoc-fleet, and csoc-baseline AppProjects"
 apply_manifest "${PROJECT_DIR}"
@@ -142,12 +189,13 @@ apply_manifest "${RGD_PACKAGE_DIR}/cluster/v1/spoke-cluster.rgd.yaml"
 wait_rgd spokecluster
 wait_crd spokeclusters.csoc.js2.org
 
-log::step 5 "Manually applying CSOC and configured account instances in graph order"
-apply_manifest "${CSOC_DIR}/hello-app.yaml"
-wait_instance_ready helloapp csoc kro-system "1800s"
+log::step 5 "Manually applying profile-selected fleet instances in graph order"
+if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
+  apply_manifest "${CSOC_DIR}/hello-app.yaml"
+  wait_instance_ready helloapp csoc kro-system "1800s"
 
-mapfile -t active_accounts < <(yq -r '.resources[]?' "${ACCOUNTS_DIR}/kustomization.yaml")
-for account in "${active_accounts[@]}"; do
+  mapfile -t active_accounts < <(yq -r '.resources[]?' "${ACCOUNTS_DIR}/kustomization.yaml")
+  for account in "${active_accounts[@]}"; do
   account_dir="${ACCOUNTS_DIR}/${account}"
   namespace="spokeclusters-${account}"
   for required in identity-config.yaml identity.yaml spoke-config.yaml network.yaml cluster.yaml; do
@@ -174,16 +222,21 @@ for account in "${active_accounts[@]}"; do
     apply_manifest "${account_dir}/hello-app.yaml"
     wait_instance_ready helloapp "${spoke_name}" "${namespace}" "1800s"
   fi
-done
+  done
+else
+  log::info "${CSOC_PROFILE} deploys controllers and RGDs only; fleet instances are disabled"
+fi
 
 log::step 6 "Enabling Argo ownership only after manual resources are ready"
-apply_manifest "${APPLICATION_DIR}/controllers.yaml"
+apply_profile_application csoc-controllers
 wait_application csoc-controllers
-apply_manifest "${APPLICATION_DIR}/rgds.yaml"
+apply_profile_application rgds
 wait_application rgds
-apply_manifest "${APPLICATION_DIR}/fleet.yaml"
-wait_application csoc-fleet 1800s
+if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
+  apply_profile_application csoc-fleet
+  wait_application csoc-fleet 1800s
+fi
 apply_manifest "${APP_OF_APPS}"
 wait_application csoc-app-of-apps
 
-log::success "Manual-first handoff completed; GitOps owns the rgds and csoc-fleet projects."
+log::success "Manual-first ${CSOC_PROFILE} handoff completed at bootstrap=${CSOC_BOOTSTRAP_REVISION}, catalog=${CSOC_CATALOG_REVISION}, fleet=${CSOC_FLEET_REVISION}."

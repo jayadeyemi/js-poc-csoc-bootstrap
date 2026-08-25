@@ -5,6 +5,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 source "${REPO_ROOT}/scripts/lib/logging.bash"
+source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
+csoc::load_profile "${REPO_ROOT}"
+export KUBECONFIG="${KUBECONFIG:-${MAGNUM_KUBECONFIG_DIR}/config}"
+
+log::info "CSOC profile: ${CSOC_PROFILE} (${MAGNUM_CLUSTER_NAME})"
 
 log::step A "Validate the coordinated workspace"
 bash "${REPO_ROOT}/scripts/tools/validate.sh"
@@ -25,12 +30,16 @@ log::step E "Manually validate manifests before enabling Argo reconciliation"
 bash "${REPO_ROOT}/scripts/bootstrap/argocd/manual-smoke-test.sh"
 log::step F "Load one separate restricted credential for each active spoke account"
 FLEET_ROOT="${FLEET_ROOT:-$(cd "${REPO_ROOT}/../js-poc-csoc-fleet" && pwd)}"
-mapfile -t active_accounts < <(yq -r '.resources[]?' "${FLEET_ROOT}/accounts/kustomization.yaml")
-for identity in "${active_accounts[@]}"; do
-  bash "${REPO_ROOT}/scripts/bootstrap/credentials/create-runtime-cloud-secret.sh" "${identity}"
-done
-if (( ${#active_accounts[@]} == 0 )); then
-  log::info "No spoke accounts are active; no spoke credentials were loaded"
+if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
+  mapfile -t active_accounts < <(yq -r '.resources[]?' "${FLEET_ROOT}/accounts/kustomization.yaml")
+  for identity in "${active_accounts[@]}"; do
+    bash "${REPO_ROOT}/scripts/bootstrap/credentials/create-runtime-cloud-secret.sh" "${identity}"
+  done
+  if (( ${#active_accounts[@]} == 0 )); then
+    log::info "No spoke accounts are active; no spoke credentials were loaded"
+  fi
+else
+  log::info "${CSOC_PROFILE} intentionally has no fleet Application or spoke credentials"
 fi
 log::step G "Apply App-of-Apps and wait for GitOps controllers"
 bash "${REPO_ROOT}/scripts/bootstrap/argocd/bootstrap-apps.sh"
