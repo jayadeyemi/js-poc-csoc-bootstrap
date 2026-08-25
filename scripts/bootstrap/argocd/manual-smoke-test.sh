@@ -65,7 +65,6 @@ done
 log::step 4 "Validating local Argo manifests with server-side dry runs"
 kubectl apply --dry-run=server --server-side -f "${REPO_ROOT}/argocd/projects" >/dev/null
 kubectl apply --dry-run=server --server-side -f "${REPO_ROOT}/argocd/apps" >/dev/null
-kubectl apply --dry-run=server --server-side -f "${REPO_ROOT}/argocd/applicationsets" >/dev/null
 kubectl apply --dry-run=server --server-side -f "${REPO_ROOT}/argocd/app-of-apps.yaml" >/dev/null
 
 cleanup

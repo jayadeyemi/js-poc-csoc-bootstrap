@@ -1,27 +1,27 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: openstack-resource-controller
+  name: rgds
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-30"
+    # RGDs must be deployed after KRO so KRO can compile them into CRDs
+    argocd.argoproj.io/sync-wave: "-5"
 spec:
-  project: csoc-platform
+  project: rgds
   source:
-    repoURL: https://github.com/k-orc/openstack-resource-controller
-    targetRevision: v2.6.0
-    path: dist
-    directory:
-      include: install.yaml
+    repoURL: https://github.com/jayadeyemi/js-poc-csoc-app-catalog
+    targetRevision: main
+    path: rgds
   destination:
     server: https://kubernetes.default.svc
-    namespace: orc-system
+    namespace: kro-system
   syncPolicy:
     automated:
       prune: false
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
     retry:
       limit: 10
       backoff:

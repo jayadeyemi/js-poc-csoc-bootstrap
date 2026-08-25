@@ -69,9 +69,8 @@ references them. Run a dry-run on the AppProject files and the App-of-Apps:
 ```bash
 KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh bash -c '
   kubectl apply --dry-run=server --server-side \
-    -f argocd/projects/csoc-platform.yaml \
-    -f argocd/projects/csoc-fleet.yaml \
-    -f argocd/projects/csoc-baseline.yaml &&
+    -f argocd/projects/rgds.yaml \
+    -f argocd/projects/csoc-fleet.yaml &&
   echo "AppProjects: OK"
 '
 ```

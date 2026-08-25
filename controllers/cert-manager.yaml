@@ -1,24 +1,25 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: kro
+  name: cert-manager
   namespace: argocd
   annotations:
-    # Install KRO before anything that depends on its CRDs
-    argocd.argoproj.io/sync-wave: "-10"
+    argocd.argoproj.io/sync-wave: "-40"
 spec:
-  project: csoc-platform
+  project: rgds
   source:
-    chart: kro
-    repoURL: registry.k8s.io/kro/charts
-    targetRevision: "0.9.3"
+    repoURL: https://charts.jetstack.io
+    chart: cert-manager
+    targetRevision: v1.21.1
     helm:
-      releaseName: kro
+      releaseName: cert-manager
       values: |
-        replicaCount: 1
+        crds:
+          enabled: true
+          keep: true
   destination:
     server: https://kubernetes.default.svc
-    namespace: kro-system
+    namespace: cert-manager
   syncPolicy:
     automated:
       prune: false
@@ -32,3 +33,4 @@ spec:
         duration: 10s
         factor: 2
         maxDuration: 3m
+  revisionHistoryLimit: 3

@@ -6,13 +6,27 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-20"
 spec:
-  description: "CSOC fleet management: SpokeCluster CRs from js-poc-csoc-fleet only."
+  description: "Account-scoped KRO identity, configuration, network, cluster, and workload instances."
   sourceRepos:
     - https://github.com/jayadeyemi/js-poc-csoc-fleet
   destinations:
     - server: https://kubernetes.default.svc
-      namespace: spokeclusters
-  clusterResourceWhitelist: []
+      namespace: kro-system
+    - server: https://kubernetes.default.svc
+      namespace: "spokeclusters-*"
+  clusterResourceWhitelist:
+    - group: csoc.js2.org
+      kind: ImmutableSpokeConfig
+    - group: csoc.js2.org
+      kind: SpokeIdentity
   namespaceResourceWhitelist:
     - group: csoc.js2.org
       kind: SpokeCluster
+    - group: csoc.js2.org
+      kind: SpokeEnvironmentConfig
+    - group: csoc.js2.org
+      kind: AutoAllocatedSpokeNetwork
+    - group: csoc.js2.org
+      kind: DedicatedSpokeNetwork
+    - group: apps.csoc.js2.org
+      kind: HelloApp

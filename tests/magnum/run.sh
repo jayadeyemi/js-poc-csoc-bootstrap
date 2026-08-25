@@ -115,15 +115,15 @@ FAKE_CLUSTER_EXISTS=true expect_pass "kubeconfig uses certificate authentication
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/kubeconfig.sh"
 grep -F -- '--use-certificate' "${FAKE_CONFIG_LOG}" >/dev/null
 grep -F -- '--output-certs' "${FAKE_CONFIG_LOG}" >/dev/null
-CHECKER="${REPO_ROOT}/cluster-registration/confirm-reachability.sh"
+CHECKER="${REPO_ROOT}/scripts/lib/kubernetes-reachability.sh"
 expect_pass "shared checker confirms authenticated HTTPS reachability" \
   bash "${CHECKER}" --name js2-mgmt-cluster \
     --kubeconfig "${MAGNUM_KUBECONFIG_DIR}/js2-mgmt-cluster.yaml" \
-    --expected-ready 2 --expected-endpoint https://10.0.0.1:6443
+    --minimum-ready 2 --expected-endpoint https://10.0.0.1:6443
 FAKE_KUBE_SERVER=http://10.0.0.1:6443 \
   expect_fail "shared checker rejects a non-HTTPS API endpoint" \
   bash "${CHECKER}" --name js2-mgmt-cluster \
-    --kubeconfig "${MAGNUM_KUBECONFIG_DIR}/js2-mgmt-cluster.yaml" --expected-ready 2
+    --kubeconfig "${MAGNUM_KUBECONFIG_DIR}/js2-mgmt-cluster.yaml" --minimum-ready 2
 FAKE_KUBE_READY_COUNT=1 \
   expect_fail "shared checker rejects insufficient Ready nodes" \
   bash "${CHECKER}" --name js2-mgmt-cluster \

@@ -6,7 +6,7 @@ metadata:
   # Applied once by scripts/bootstrap/argocd/bootstrap-apps.sh.
   # After that, Argo CD manages everything under argocd/ from Git.
 spec:
-  project: csoc-platform
+  project: rgds
   source:
     repoURL: https://github.com/jayadeyemi/js-poc-csoc-bootstrap
     targetRevision: master
@@ -19,7 +19,7 @@ spec:
     namespace: argocd
   syncPolicy:
     automated:
-      prune: false          # never auto-delete AppProjects or ApplicationSets
+      prune: false          # project and infrastructure retirement is always deliberate
       selfHeal: true
     syncOptions:
       - ServerSideApply=true

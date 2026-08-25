@@ -6,7 +6,7 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-20"
 spec:
-  project: csoc-platform
+  project: rgds
   source:
     repoURL: https://kubernetes-sigs.github.io/cluster-api-operator
     chart: cluster-api-operator

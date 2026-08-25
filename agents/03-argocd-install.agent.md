@@ -50,7 +50,6 @@ KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh bash -c '
 
 Expected pods (all `1/1 Running`):
 - `argocd-application-controller-*`
-- `argocd-applicationset-controller-*`
 - `argocd-dex-server-*`
 - `argocd-notifications-controller-*`
 - `argocd-redis-*`

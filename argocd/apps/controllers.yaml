@@ -1,29 +1,23 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: capo-identity
+  name: csoc-controllers
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-5"
+    argocd.argoproj.io/sync-wave: "-50"
 spec:
-  project: csoc-platform
+  project: rgds
   source:
     repoURL: https://github.com/jayadeyemi/js-poc-csoc-bootstrap
     targetRevision: master
-    path: controllers/capo-identity
+    path: controllers
   destination:
     server: https://kubernetes.default.svc
-    namespace: capo-system
+    namespace: argocd
   syncPolicy:
     automated:
       prune: false
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
-      - SkipDryRunOnMissingResource=true
-    retry:
-      limit: 10
-      backoff:
-        duration: 10s
-        factor: 2
-        maxDuration: 3m
+  revisionHistoryLimit: 3

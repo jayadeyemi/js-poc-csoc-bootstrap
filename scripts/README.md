@@ -52,11 +52,8 @@ These scripts run static validation, fake-CLI lifecycle tests, manifest
 rendering, and secret scanning. `make validate` is the authoritative local
 gate.
 
-## In-cluster and test code outside `scripts/`
+## Test code outside `scripts/`
 
-- `cluster-registration/` is packaged into a Kubernetes CronJob. It runs on
-  the reachable CSOC management cluster and checks every declared spoke with
-  that spoke's kubeconfig.
 - `tests/` runs locally or in the management image and never provisions live
   infrastructure.
 

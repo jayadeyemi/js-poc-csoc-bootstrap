@@ -1,15 +1,15 @@
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
-  name: csoc-platform
+  name: rgds
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "-20"
 spec:
-  description: "CSOC platform components: KRO, RGDs, CAPI+CAPO controllers. Highly restricted."
+  description: "CSOC controllers and ResourceGraphDefinitions."
   sourceRepos:
     - https://github.com/jayadeyemi/js-poc-csoc-bootstrap
-    - https://github.com/jayadeyemi/js-poc-csoc-platform-apis
+    - https://github.com/jayadeyemi/js-poc-csoc-app-catalog
     - registry.k8s.io/kro/charts
     - https://argoproj.github.io/argo-helm
     - https://kubernetes-sigs.github.io/cluster-api-operator
@@ -29,10 +29,6 @@ spec:
     - server: https://kubernetes.default.svc
       namespace: argocd
     - server: https://kubernetes.default.svc
-      namespace: cluster-registration
-    - server: https://kubernetes.default.svc
-      namespace: spokeclusters
-    - server: https://kubernetes.default.svc
       namespace: capi-operator-system
     - server: https://kubernetes.default.svc
       namespace: cert-manager
@@ -42,6 +38,8 @@ spec:
       namespace: caaph-system
     - server: https://kubernetes.default.svc
       namespace: orc-system
+    - server: https://kubernetes.default.svc
+      namespace: "spokeclusters-*"
   clusterResourceWhitelist:
     - group: apiextensions.k8s.io
       kind: CustomResourceDefinition
@@ -51,12 +49,6 @@ spec:
       kind: ClusterRoleBinding
     - group: kro.run
       kind: ResourceGraphDefinition
-    - group: infrastructure.cluster.x-k8s.io
-      kind: OpenStackClusterIdentity
-    - group: admissionregistration.k8s.io
-      kind: ValidatingAdmissionPolicy
-    - group: admissionregistration.k8s.io
-      kind: ValidatingAdmissionPolicyBinding
     - group: admissionregistration.k8s.io
       kind: MutatingWebhookConfiguration
     - group: admissionregistration.k8s.io
@@ -64,5 +56,27 @@ spec:
     - group: ""
       kind: Namespace
   namespaceResourceWhitelist:
-    - group: "*"
-      kind: "*"
+    - group: argoproj.io
+      kind: Application
+    - group: argoproj.io
+      kind: AppProject
+    - group: ""
+      kind: ServiceAccount
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
+    - group: apps
+      kind: Deployment
+    - group: apps
+      kind: StatefulSet
+    - group: batch
+      kind: Job
+    - group: batch
+      kind: CronJob
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: ""
+      kind: Service

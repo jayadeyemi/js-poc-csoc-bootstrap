@@ -43,10 +43,10 @@ management verification runs the shared checker with an exact initial
 Ready-node count:
 
 ```bash
-cluster-registration/confirm-reachability.sh \
+scripts/lib/kubernetes-reachability.sh \
   --name "$MAGNUM_CLUSTER_NAME" \
   --kubeconfig "${MAGNUM_KUBECONFIG_DIR:-$HOME/.kube}/${MAGNUM_CLUSTER_NAME}.yaml" \
-  --expected-ready 2 \
+  --minimum-ready 2 \
   --expected-endpoint "https://<api-address>:6443"
 ```
 
@@ -54,30 +54,13 @@ The checker validates the kubeconfig, HTTPS endpoint, `/readyz`, authorization
 to list nodes, Ready-node count, and absence of the OpenStack
 cloud-provider-uninitialized taint. It never prints certificate or key data.
 
-The cluster-registration CronJob applies the same checker every two minutes to
-every enabled, provisionally Ready `SpokeCluster` returned by
-`kubectl get spokecluster --all-namespaces`. For a spoke, the minimum Ready
-count is `spec.controlPlane.count + spec.kubernetes.minNodes`. A new Argo
-cluster secret is created only after reachability passes.
-
-Reachability results are recorded on existing Argo cluster-secret annotations:
-
-```bash
-kubectl get secret -n argocd \
-  -l argocd.argoproj.io/secret-type=cluster \
-  -o custom-columns='NAME:.metadata.name,REACHABLE:.metadata.annotations.csoc\.js2\.org/reachable,CHECKED:.metadata.annotations.csoc\.js2\.org/reachability-checked-at'
-kubectl get jobs -n cluster-registration \
-  --sort-by=.metadata.creationTimestamp
-```
-
-A temporary spoke outage does not delete its Argo secret or Applications. The
-CronJob marks the existing registration unreachable, completes checks for the
-remaining spokes, reports a failed Job, and retries on its next schedule.
+Spoke workloads are reconciled by KRO-created CAPI addon resources. No Argo
+cluster registration or ApplicationSet path is used.
 
 ## Controller recovery
 
-Argo CD owns cert-manager, CAPI, CAPO, ORC, CAAPH, KRO, the SpokeCluster policy, and cluster
-registration. There is no `clusterctl` installation path. Diagnose drift with:
+Argo CD owns cert-manager, CAPI, CAPO, ORC, CAAPH, KRO, RGD definitions, and
+fleet graph instances. There is no `clusterctl` installation path. Diagnose drift with:
 
 ```bash
 kubectl get applications -n argocd
@@ -102,17 +85,11 @@ provider CRDs or generated CAPI objects.
 6. Confirm an OpenStack API read, a `LoadBalancer` reconciliation, and a
    Cinder-backed PVC operation, then revoke the old application credential.
 
-## Rotate Argo spoke credentials
+## Rotate spoke OpenStack credentials
 
-CAPI refreshes each `<cluster>-kubeconfig` secret. The registration CronJob
-reconciles the corresponding Argo cluster secret every two minutes, including
-labels and client credentials. Verify its latest Job before revoking old
-credentials:
-
-```bash
-kubectl get jobs -n cluster-registration --sort-by=.metadata.creationTimestamp
-kubectl get secret -n argocd -l argocd.argoproj.io/secret-type=cluster
-```
+Reload `accounts/<identity>/clouds.yaml` with the credential helper, verify a
+CAPO read, load-balancer reconciliation, and Cinder PVC, then revoke the old
+application credential. Magnum credentials are rotated independently.
 
 ## Cleanup gate
 
