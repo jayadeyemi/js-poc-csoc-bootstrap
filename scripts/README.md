@@ -18,16 +18,17 @@ to the in-container pipeline.
 ## `bootstrap/` — automatic in-container pipeline
 
 These scripts are intended to run inside the pinned management container.
-`pipeline.sh` calls the required Magnum, Argo CD, and runtime-credential steps
+`pipeline.sh` calls the required Magnum, Argo CD, and spoke-credential steps
 in order. Scripts under `bootstrap/magnum/` are lifecycle stages, not
 independent jobs running in the background.
 
 - `bootstrap/pipeline.sh`: ordered bootstrap coordinator
 - `bootstrap/magnum/`: preflight, provision, wait, kubeconfig, node-group, and
   acceptance checks
-- `bootstrap/argocd/`: management-cluster Argo CD installation and root-app
-  bootstrap
-- `bootstrap/credentials/`: injects only the restricted runtime credential
+- `bootstrap/argocd/`: management-cluster Argo CD installation, the narrow
+  post-render filter that removes the unused ApplicationSet controller, and
+  root-app bootstrap
+- `bootstrap/credentials/`: loads only the restricted account credential
   after management-cluster reachability has been confirmed
 
 ## `operations/` — explicit operator actions
@@ -71,6 +72,3 @@ important boundaries are:
 - `bash scripts/operations/magnum/delete-owned.sh <uuid>`: reviewed,
   exact-UUID operation
 - `make validate`: local checks only
-
-The Kubernetes CronJob is reconciled by Argo CD; it is not launched by a host
-shell script.
