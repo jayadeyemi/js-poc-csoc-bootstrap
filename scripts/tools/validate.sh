@@ -243,6 +243,8 @@ if rg --line-number 'SpokeCluster|cluster\.x-k8s\.io|infrastructure\.cluster\.x-
 fi
 rg -q '<body><h1>Hello from every spoke\.</h1></body>' "${HELLO_RGD}" \
   || log::die "HelloApp RGD message is incorrect"
+rg -q 'replicas: \$\{string\(schema\.spec\.replicas\)\}' "${HELLO_RGD}" \
+  || log::die "HelloApp must stringify replicas inside its manifest payload"
 [[ $(yq -r '.spec.schema.scope' "${HELLO_RGD}") == Namespaced ]] \
   || log::die "HelloApp must be an account-scoped workload graph"
 yq -e '.spec.resources[] | select(.id == "resourceset") | .template.kind == "ClusterResourceSet"' \
