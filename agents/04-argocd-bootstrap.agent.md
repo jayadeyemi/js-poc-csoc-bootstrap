@@ -54,6 +54,10 @@ The script applies and waits in this order:
    `ImmutableSpokeConfig/test-poc` and `SpokeIdentity/test-poc`;
 5. the controller, RGD, fleet, and root Applications. No ApplicationSet is used.
 
+The immutable account config approves one general worker flavor. Per-cluster
+`minNodes` and `maxNodes` remain mutable only on `SpokeCluster`; there are no
+GPU, high-memory, or worker-class selector fields.
+
 Do not bypass these readiness gates or allow Argo pruning during an RGD
 ownership transfer.
 
