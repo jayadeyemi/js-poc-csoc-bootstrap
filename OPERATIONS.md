@@ -170,6 +170,12 @@ delete`, never removes finalizers, and never touches the Magnum CSOC. If a
 controller deletion stalls, it stops with evidence so the cause can be fixed
 without bypassing ownership.
 
+Because the spoke API permits only the CSOC's reviewed SNAT CIDR, workload
+cleanup runs in a short-lived, pinned `kubectl` Job on the CSOC. The Job mounts
+the CAPI kubeconfig Secret read-only, deletes the workload namespace, records a
+non-secret log, and is removed before CAPI teardown. The kubeconfig is never
+copied to the local operator filesystem.
+
 The operation automates only the common spoke contract. Before
 `--delete-identity` removes the account namespace, it discovers every remaining
 namespaced `csoc.js2.org` instance and fails closed. Optional or future graphs

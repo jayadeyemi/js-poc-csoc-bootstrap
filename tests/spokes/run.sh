@@ -15,7 +15,8 @@ for required in \
   'credentials::metadata' \
   'kubectl api-resources --api-group=csoc.js2.org --namespaced=true' \
   'independently owned graphs' \
-  'kubectl --kubeconfig "${WORKLOAD_KUBECONFIG}" delete namespace hello-app' \
+  'secretName: ${SPOKE}-kubeconfig' \
+  'kubectl wait job "${WORKLOAD_CLEANUP_JOB}"' \
   'kubectl delete spokecluster' \
   'kubectl delete "${NETWORK_KIND}"' \
   'kubectl delete spokekeypair'; do
@@ -37,6 +38,10 @@ if rg -n 'openstack[[:space:]]+(server|network|subnet|router|loadbalancer)[[:spa
 fi
 if rg -n '(--force|finalizers|patch[[:space:]].*finalizer)' "${DESTROY_SCRIPT}"; then
   printf 'not ok - destroy script contains force/finalizer bypasses\n' >&2
+  exit 1
+fi
+if rg -n 'base64 -d|WORKLOAD_KUBECONFIG' "${DESTROY_SCRIPT}"; then
+  printf 'not ok - destroy script copies the workload kubeconfig to the operator filesystem\n' >&2
   exit 1
 fi
 
