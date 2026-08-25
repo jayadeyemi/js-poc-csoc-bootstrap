@@ -9,6 +9,7 @@ FLEET_ROOT="${FLEET_ROOT:-${WORKSPACE_ROOT}/js-poc-csoc-fleet}"
 source "${REPO_ROOT}/scripts/lib/logging.bash"
 source "${REPO_ROOT}/scripts/lib/credentials.bash"
 source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
+source "${REPO_ROOT}/versions.env"
 csoc::load_profile "${REPO_ROOT}"
 [[ "${CSOC_FLEET_ENABLED}" == true ]] \
   || log::die "Profile ${CSOC_PROFILE} has no fleet lifecycle"
@@ -80,7 +81,6 @@ DESIRED_REVISION=$(git -C "${FLEET_ROOT}" rev-parse origin/main)
 DESIRED_TREE="$(mktemp -d)"
 cleanup() {
   rm -rf -- "${DESIRED_TREE}"
-  [[ -z "${WORKLOAD_KUBECONFIG:-}" ]] || rm -f -- "${WORKLOAD_KUBECONFIG}"
 }
 trap cleanup EXIT
 git -C "${FLEET_ROOT}" archive origin/main | tar -x -C "${DESIRED_TREE}"
@@ -154,16 +154,47 @@ jq -n --arg identity "${IDENTITY}" --arg spoke "${SPOKE}" --arg namespace "${NAM
   '{identity:$identity,spoke:$spoke,namespace:$namespace,networkKind:$networkKind,networkID:$networkID,subnetID:$subnetID,routerID:$routerID,apiLoadBalancerID:$apiLoadBalancerID,keypairName:$keypairName}' \
   >"${EVIDENCE_DIR}/ownership.json"
 
-WORKLOAD_KUBECONFIG="$(mktemp)"
-chmod 600 "${WORKLOAD_KUBECONFIG}"
-kubectl get secret "${SPOKE}-kubeconfig" -n "${NAMESPACE}" -o jsonpath='{.data.value}' \
-  | base64 -d >"${WORKLOAD_KUBECONFIG}"
-kubectl --kubeconfig "${WORKLOAD_KUBECONFIG}" get namespace hello-app -o json \
-  >"${EVIDENCE_DIR}/hello-app-namespace.json" 2>/dev/null || true
-
 log::step 3 "Deleting the spoke workload before its CAPI cluster"
-kubectl --kubeconfig "${WORKLOAD_KUBECONFIG}" delete namespace hello-app \
-  --ignore-not-found --wait=true --timeout=15m
+WORKLOAD_CLEANUP_JOB="${SPOKE:0:42}-workload-cleanup"
+kubectl delete job "${WORKLOAD_CLEANUP_JOB}" -n "${NAMESPACE}" \
+  --ignore-not-found --wait=true >/dev/null
+cat <<EOF | kubectl apply --server-side --field-manager=csoc-spoke-destroy -f - >/dev/null
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${WORKLOAD_CLEANUP_JOB}
+  namespace: ${NAMESPACE}
+  labels:
+    csoc.js2.org/operation: spoke-destroy
+    csoc.js2.org/spoke: ${SPOKE}
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: kubectl
+          image: registry.k8s.io/kubectl:v${KUBECTL_VERSION}
+          command: [/bin/sh, -ec]
+          args:
+            - |
+              kubectl --kubeconfig=/workload/value get namespace hello-app -o name || true
+              kubectl --kubeconfig=/workload/value delete namespace hello-app --ignore-not-found=true --wait=true --timeout=15m
+          volumeMounts:
+            - name: workload-kubeconfig
+              mountPath: /workload
+              readOnly: true
+      volumes:
+        - name: workload-kubeconfig
+          secret:
+            secretName: ${SPOKE}-kubeconfig
+EOF
+kubectl wait job "${WORKLOAD_CLEANUP_JOB}" -n "${NAMESPACE}" \
+  --for=condition=Complete --timeout=20m \
+  || { kubectl logs job/"${WORKLOAD_CLEANUP_JOB}" -n "${NAMESPACE}" >&2 || true; log::die "In-CSOC workload cleanup failed"; }
+kubectl logs job/"${WORKLOAD_CLEANUP_JOB}" -n "${NAMESPACE}" \
+  >"${EVIDENCE_DIR}/workload-cleanup.log"
+kubectl delete job "${WORKLOAD_CLEANUP_JOB}" -n "${NAMESPACE}" --wait=true >/dev/null
 kubectl delete helloapp "${SPOKE}" -n "${NAMESPACE}" --ignore-not-found --wait=true --timeout=15m
 
 log::step 4 "Deleting SpokeCluster and waiting for CAPI/CAPO ownership cleanup"
