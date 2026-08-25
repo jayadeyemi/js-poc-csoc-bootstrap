@@ -1,6 +1,19 @@
 # js-poc-csoc-bootstrap
 
-Bootstraps the CSOC management cluster on Jetstream2 Magnum, installs Argo CD, and hands controllers, RGD definitions, and fleet instances to GitOps.
+Bootstraps profile-separated CSOC management clusters on Jetstream2 Magnum,
+installs Argo CD, and hands controllers, RGD definitions, and selected fleet
+instances to GitOps.
+
+## CSOC environments
+
+| Profile | Magnum ownership | Git sources | Fleet |
+|---|---|---|---|
+| `dev` (default) | Existing `js2-mgmt-cluster-2`; 1 × `m3.quad` control plane | bootstrap `master`, catalog/fleet `main` | CSOC Hello and `test-poc` |
+| `prod` | Dormant `js2-csoc-prod`; immutable 3 × `m3.quad` control plane | coordinated `release/prod` branches | disabled |
+
+Production is a template only: nothing creates it unless an operator explicitly
+runs a Magnum provisioning target with `PROFILE=prod` after the coordinated
+release branches exist.
 
 ## Quick start
 
@@ -8,6 +21,8 @@ Bootstraps the CSOC management cluster on Jetstream2 Magnum, installs Argo CD, a
 make help              # list all targets
 make container-build   # build the pinned management image
 make bootstrap         # full pipeline A–G (idempotent)
+make container-up PROFILE=dev
+make container-up PROFILE=prod
 ```
 
 Before using these commands, follow [FIRST_INSTALL.md](FIRST_INSTALL.md). It is
@@ -15,6 +30,11 @@ the authoritative checklist of directories, non-secret manifests, credential
 files, manual apply gates, and activation steps.
 
 `make bootstrap` runs the inner pipeline non-interactively as the host UID/GID inside the pinned image. `make container-run` mounts live credentials at `/run/csoc-credentials` read-only and the workspace at `/workspace`.
+
+The two persistent containers are isolated operator shells with different
+kubeconfig mounts. They are convenient for simultaneous administration, but
+they do not perform reconciliation: Argo CD runs inside each CSOC and continues
+Git synchronization when the local containers are stopped.
 
 ## Bootstrap sequence
 
@@ -31,7 +51,8 @@ Steps A–F prepare the management cluster. Step G applies the app-of-apps root 
 ```
 argocd/              AppProjects, Applications, App-of-Apps, and Argo CD install values
 controllers/         controller Applications (cert-manager, CAPI Operator, KRO, ORC)
-iac/magnum/          cluster.env — Magnum parameters (no secrets)
+iac/magnum/          shared Magnum parameters (no secrets)
+iac/csoc/profiles/   dev/prod ownership, immutable sizing, and Git revisions
 scripts/host/        host-only image build/run and outer bootstrap entry point
 scripts/bootstrap/   in-container pipeline (Magnum, Argo CD, credentials)
 scripts/operations/  explicit operator actions: diagnose, inventory, delete

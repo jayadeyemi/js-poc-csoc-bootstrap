@@ -27,7 +27,7 @@ Kubernetes Secret.
 
 ```bash
 KUBECONFIG=.state/kubeconfigs/config \
-  bash scripts/bootstrap/credentials/create-runtime-cloud-secret.sh <identity>
+  CSOC_PROFILE=dev bash scripts/bootstrap/credentials/create-runtime-cloud-secret.sh <identity>
 ```
 
 The loader verifies that the credential is restricted, unexpired, and scoped
@@ -42,12 +42,12 @@ It never prints credential values.
 
 ```bash
 KUBECONFIG=.state/kubeconfigs/config \
-  bash scripts/bootstrap/argocd/bootstrap-apps.sh
+  CSOC_PROFILE=dev bash scripts/bootstrap/argocd/bootstrap-apps.sh
 ```
 
 The script applies and waits in this order:
 
-1. AppProjects `rgds` and `csoc-fleet`;
+1. AppProjects `rgds`, `csoc-fleet`, and `csoc-baseline`;
 2. controller Applications and their CRDs;
 3. KRO RGD definitions and generated CRDs;
 4. the CSOC-local `HelloApp/csoc` instance and every account listed in
@@ -77,8 +77,8 @@ kubectl get appprojects -n argocd
 ```
 
 The identity selector must match only namespaces labeled
-`csoc.js2.org/identity=<identity>`. Exactly the two intended AppProjects
-must remain after legacy ownership is retired.
+`csoc.js2.org/identity=<identity>`. The intended custom project set is exactly
+`rgds`, `csoc-fleet`, and `csoc-baseline` (plus Argo's built-in `default`).
 
 ## Horizon expectations
 

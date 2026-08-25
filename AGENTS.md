@@ -2,12 +2,17 @@
 
 Bootstraps the **CSOC management cluster** on Jetstream2 Magnum, then installs Argo CD and hands controllers, RGD definitions, and fleet instances to GitOps.
 
+The existing `js2-mgmt-cluster-2` is `PROFILE=dev` and tracks catalog/fleet
+`main`. `PROFILE=prod` is dormant, uses an immutable three-member `m3.quad`
+control plane, tracks coordinated `release/prod` branches, and has no fleet
+Application. Always state the profile in live operations.
+
 ## Quick start
 
 ```bash
 make help                  # all available targets
 make container-build       # build management container
-make bootstrap             # full pipeline A→G (idempotent)
+make bootstrap PROFILE=dev # full pipeline A→G (idempotent)
 ```
 
 `make bootstrap` builds the pinned image on the host and runs the inner pipeline
@@ -36,7 +41,8 @@ scripts/lib/         source-only `.bash` libraries; never execute directly
 scripts/tools/       local/container validation and secret scanning
 scripts/host/docker/ Dockerfile + entrypoint (non-root, no baked secrets)
 scripts/host/credentials/ ignored credentials and tracked examples
-iac/magnum/          cluster.env — Magnum parameters (no secrets)
+iac/magnum/          shared Magnum parameters (no secrets)
+iac/csoc/profiles/   environment ownership, sizing, and Git revisions
 argocd/              rgds/fleet AppProjects, Applications, App-of-Apps, install values
 controllers/         controller Applications installed before KRO graphs
 ```

@@ -6,7 +6,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 source "${REPO_ROOT}/scripts/lib/logging.bash"
+source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
 source "${REPO_ROOT}/versions.env"
+csoc::load_profile "${REPO_ROOT}"
+export KUBECONFIG="${KUBECONFIG:-${MAGNUM_KUBECONFIG_DIR}/config}"
 
 SMOKE_NAMESPACE=cert-manager
 SMOKE_RELEASE=cert-manager
@@ -62,10 +65,14 @@ for crd in \
   kubectl wait crd "${crd}" --for=condition=Established --timeout=120s >/dev/null
 done
 
-log::step 4 "Validating local Argo manifests with server-side dry runs"
+log::step 4 "Validating ${CSOC_PROFILE} Argo manifests with server-side dry runs"
 kubectl apply --dry-run=server --server-side -f "${REPO_ROOT}/argocd/projects" >/dev/null
-kubectl apply --dry-run=server --server-side -f "${REPO_ROOT}/argocd/apps" >/dev/null
-kubectl apply --dry-run=server --server-side -f "${REPO_ROOT}/argocd/app-of-apps.yaml" >/dev/null
+if [[ "${CSOC_PROFILE}" == prod ]]; then
+  kubectl apply --dry-run=server --server-side -f "${REPO_ROOT}/argocd/prod/apps" >/dev/null
+else
+  kubectl apply --dry-run=server --server-side -f "${REPO_ROOT}/argocd/apps" >/dev/null
+fi
+kubectl apply --dry-run=server --server-side -f "${CSOC_ARGO_ROOT_MANIFEST}" >/dev/null
 
 cleanup
 smoke_installed=false

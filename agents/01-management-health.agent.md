@@ -16,13 +16,13 @@ Every `kubectl` / `helm` command below runs inside the pinned management contain
 
 ```bash
 cd /mnt/c/Users/boadeyem/Jetstream2-CSOC-POC/js-poc-csoc-bootstrap
-KUBECONFIG_DIR="$(pwd)/.state/kubeconfigs" bash scripts/host/container/run.sh <cmd>
+PROFILE=dev KUBECONFIG_DIR="$(pwd)/.state/kubeconfigs" bash scripts/host/container/run.sh <cmd>
 ```
 
 Alias this if convenient:
 ```bash
 KDIR="$(pwd)/.state/kubeconfigs"
-alias mc='KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh'
+alias mc='PROFILE=dev KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh'
 ```
 
 ## Step 1 — Cluster reachability
@@ -85,8 +85,9 @@ Expected namespaces present:
 `network-operator`, `node-feature-discovery`, `node-problem-detector`,
 `openstack-system`, `tigera-operator`.
 
-`argocd` must NOT exist (confirms ArgoCD is not yet installed).
-`capo-system`, `capi-system`, `cert-manager` must NOT exist.
+For a first install, `argocd`, `capo-system`, `capi-system`, and `cert-manager`
+must not exist. For the established dev CSOC, verify their workloads are
+healthy instead of treating their presence as a failure.
 
 ## Step 5 — Cluster version
 

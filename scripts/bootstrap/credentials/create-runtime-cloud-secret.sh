@@ -9,6 +9,11 @@ FLEET_ROOT="${FLEET_ROOT:-${WORKSPACE_ROOT}/js-poc-csoc-fleet}"
 source "${REPO_ROOT}/scripts/lib/logging.bash"
 source "${REPO_ROOT}/scripts/lib/k8s.bash"
 source "${REPO_ROOT}/scripts/lib/credentials.bash"
+source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
+csoc::load_profile "${REPO_ROOT}"
+[[ "${CSOC_FLEET_ENABLED}" == true ]] \
+  || log::die "Profile ${CSOC_PROFILE} has no fleet credential boundary"
+export KUBECONFIG="${KUBECONFIG:-${MAGNUM_KUBECONFIG_DIR}/config}"
 
 usage() {
   printf 'Usage: %s [--all | IDENTITY]\n' "$0" >&2
@@ -40,6 +45,24 @@ esac
 
 command -v yq >/dev/null 2>&1 || log::die "Required command not found: yq"
 
+TRUSTED_FLEET_ROOT=
+if [[ "${CSOC_TEST_LOCAL_FLEET_SOURCE:-false}" == true ]]; then
+  TRUSTED_FLEET_ROOT="${FLEET_ROOT}"
+else
+  command -v git >/dev/null 2>&1 || log::die "Required command not found: git"
+  [[ -d "${FLEET_ROOT}/.git" ]] || log::die "Fleet Git repository not found: ${FLEET_ROOT}"
+  TRUSTED_FLEET_ROOT=$(mktemp -d)
+  cleanup_trusted_fleet() {
+    rm -rf -- "${TRUSTED_FLEET_ROOT}"
+  }
+  trap cleanup_trusted_fleet EXIT
+  git -C "${FLEET_ROOT}" fetch --quiet origin \
+    "+refs/heads/${CSOC_FLEET_REVISION}:refs/remotes/origin/${CSOC_FLEET_REVISION}" \
+    || log::die "Configured fleet branch is unavailable: ${CSOC_FLEET_REVISION}"
+  git -C "${FLEET_ROOT}" archive "refs/remotes/origin/${CSOC_FLEET_REVISION}" \
+    | tar -x -C "${TRUSTED_FLEET_ROOT}"
+fi
+
 load_identity() {
   local identity=$1 identity_file clouds_file project_id cloud_name namespace
   local credential_json magnum_file magnum_credential_id
@@ -48,7 +71,7 @@ load_identity() {
 
   [[ "${identity}" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] \
     || log::die "Invalid identity name: ${identity}"
-  identity_file="${FLEET_ROOT}/accounts/${identity}/identity-config.yaml"
+  identity_file="${TRUSTED_FLEET_ROOT}/accounts/${identity}/identity-config.yaml"
   clouds_file="${ACCOUNTS_DIR}/${identity}/clouds.yaml"
   [[ -f "${identity_file}" ]] \
     || log::die "Trusted SpokeIdentity configuration not found: ${identity_file}"

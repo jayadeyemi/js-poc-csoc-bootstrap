@@ -6,10 +6,32 @@ pipeline non-interactively. Live cluster creation is allowed only after local
 `make validate`, `make security-scan`, and `make preflight` pass; GitHub Actions
 is not a deployment gate.
 
+## Select a CSOC
+
+All lifecycle targets default to `PROFILE=dev`. Production must always be
+spelled explicitly. The profile selects a different Magnum UUID-state file,
+kubeconfig directory, immutable control-plane size, and Git revision set.
+
+```bash
+make container-up PROFILE=dev
+make container-up PROFILE=prod
+make container-status PROFILE=dev
+make container-shell PROFILE=prod
+```
+
+These containers can run simultaneously. GitOps itself does not depend on
+them: the in-cluster Argo controllers reconcile development default branches
+and production `release/prod` branches independently.
+
+Never create `PROFILE=prod` until the coordinated `release/prod` branches exist
+in bootstrap and app catalog, quota covers three `m3.quad` control planes plus
+workers, and the immutable sizing has been reviewed. Production deliberately
+omits `Application/csoc-fleet` and therefore creates no fleet resources.
+
 ## Resume or repeat bootstrap
 
 `make bootstrap` is restartable. Magnum lifecycle commands resolve only the
-UUID in `.state/magnum-cluster.json`; a same-named cluster without matching
+UUID in the selected profile's state file; a same-named cluster without matching
 state is rejected. If a run is interrupted, inspect that state and the UUID
 with `openstack coe cluster show <uuid>` before repeating the command.
 

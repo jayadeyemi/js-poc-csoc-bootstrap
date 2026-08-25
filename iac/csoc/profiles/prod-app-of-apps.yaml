@@ -3,23 +3,21 @@ kind: Application
 metadata:
   name: csoc-app-of-apps
   namespace: argocd
-  # Development root. Production uses the release-pinned manifest under
-  # iac/csoc/profiles/prod-app-of-apps.yaml.
 spec:
   project: rgds
   source:
     repoURL: https://github.com/jayadeyemi/js-poc-csoc-bootstrap
-    targetRevision: master
+    targetRevision: release/prod
     path: .
     directory:
       recurse: true
-      include: "{argocd/projects/*.yaml,argocd/apps/*.yaml}"
+      include: "{argocd/projects/*.yaml,argocd/prod/apps/*.yaml}"
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
   syncPolicy:
     automated:
-      prune: false          # project and infrastructure retirement is always deliberate
+      prune: false
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
