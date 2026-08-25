@@ -69,7 +69,7 @@ kubectl get configmap "${GATE_CONFIGMAP}" -n argocd >/dev/null \
    && -f "${CSOC_DIR}/kustomization.yaml" ]] \
   || log::die "RGD definitions or fleet entrypoints are unavailable"
 
-log::step 2 "Applying the rgds and csoc-fleet AppProjects"
+log::step 2 "Applying the rgds, csoc-fleet, and csoc-baseline AppProjects"
 apply_manifest "${PROJECT_DIR}"
 
 log::step 3 "Applying controller Applications in dependency order"
