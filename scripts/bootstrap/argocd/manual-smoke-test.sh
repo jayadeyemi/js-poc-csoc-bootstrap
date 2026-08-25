@@ -82,13 +82,14 @@ else
 fi
 
 log::step 3 "Validating ${CSOC_PROFILE} Argo manifests from archived revisions"
-kubectl apply --dry-run=server --server-side -f "${BOOTSTRAP_SOURCE}/argocd/projects" >/dev/null
+dry_run_args=(--dry-run=server --server-side --force-conflicts --field-manager=csoc-bootstrap)
+kubectl apply "${dry_run_args[@]}" -f "${BOOTSTRAP_SOURCE}/argocd/projects" >/dev/null
 if [[ "${CSOC_PROFILE}" == prod ]]; then
-  kubectl apply --dry-run=server --server-side -f "${BOOTSTRAP_SOURCE}/argocd/prod/apps" >/dev/null
+  kubectl apply "${dry_run_args[@]}" -f "${BOOTSTRAP_SOURCE}/argocd/prod/apps" >/dev/null
 else
-  kubectl apply --dry-run=server --server-side -f "${BOOTSTRAP_SOURCE}/argocd/apps" >/dev/null
+  kubectl apply "${dry_run_args[@]}" -f "${BOOTSTRAP_SOURCE}/argocd/apps" >/dev/null
 fi
-kubectl apply --dry-run=server --server-side \
+kubectl apply "${dry_run_args[@]}" \
   -f "${BOOTSTRAP_SOURCE}/${CSOC_ARGO_ROOT_MANIFEST_REL}" >/dev/null
 
 if [[ "${smoke_installed}" == true ]]; then
