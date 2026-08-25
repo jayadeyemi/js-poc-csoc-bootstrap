@@ -60,6 +60,20 @@ spec:
       kind: Application
     - group: argoproj.io
       kind: AppProject
+    - group: cert-manager.io
+      kind: Certificate
+    - group: cert-manager.io
+      kind: Issuer
+    - group: operator.cluster.x-k8s.io
+      kind: AddonProvider
+    - group: operator.cluster.x-k8s.io
+      kind: BootstrapProvider
+    - group: operator.cluster.x-k8s.io
+      kind: ControlPlaneProvider
+    - group: operator.cluster.x-k8s.io
+      kind: CoreProvider
+    - group: operator.cluster.x-k8s.io
+      kind: InfrastructureProvider
     - group: ""
       kind: ServiceAccount
     - group: rbac.authorization.k8s.io
