@@ -5,7 +5,7 @@
 csoc::load_profile() {
   local repo_root=${1:?repository root is required}
   local profile=${CSOC_PROFILE:-dev}
-  local profile_file="${repo_root}/iac/csoc/profiles/${profile}.env"
+  local profile_file="${repo_root}/iac/csoc/profiles/${profile}.profile"
 
   [[ "${profile}" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] \
     || { printf 'Invalid CSOC_PROFILE: %s\n' "${profile}" >&2; return 64; }

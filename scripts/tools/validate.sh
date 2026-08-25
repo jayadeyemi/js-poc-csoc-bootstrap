@@ -56,6 +56,13 @@ if rg --line-number 'coe cluster template (create|update|delete)' "${REPO_ROOT}/
 fi
 
 log::step 2 "Validating the three-project Argo ownership graph"
+for profile_manifest in iac/csoc/profiles/dev.profile iac/csoc/profiles/prod.profile; do
+  git -C "${REPO_ROOT}" ls-files --error-unmatch "${profile_manifest}" >/dev/null \
+    || log::die "CSOC environment selection must be tracked: ${profile_manifest}"
+  if git -C "${REPO_ROOT}" check-ignore -q "${profile_manifest}"; then
+    log::die "CSOC environment selection must not be ignored: ${profile_manifest}"
+  fi
+done
 mapfile -t project_names < <(
   for project_file in "${REPO_ROOT}"/argocd/projects/*.yaml; do
     yq -r '.metadata.name' "${project_file}"

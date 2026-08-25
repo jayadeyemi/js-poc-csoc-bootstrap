@@ -1,0 +1,19 @@
+# Dormant production CSOC profile. Creating this cluster is always a separate,
+# reviewed operation. Three m3.quad control planes are immutable after birth.
+CSOC_PROFILE_NAME=prod
+CSOC_FLEET_ENABLED=false
+CSOC_BOOTSTRAP_REVISION=release/prod
+CSOC_CATALOG_REVISION=release/prod
+CSOC_FLEET_REVISION=release/prod
+CSOC_ARGO_ROOT_MANIFEST_REL=iac/csoc/profiles/prod-app-of-apps.yaml
+
+MAGNUM_CLUSTER_NAME=${MAGNUM_CLUSTER_NAME:-js2-csoc-prod}
+MAGNUM_STATE_FILE_REL=.state/csoc/prod/magnum-cluster.json
+MAGNUM_KUBECONFIG_DIR_REL=.state/csoc/prod/kubeconfigs
+MAGNUM_MASTER_COUNT=${MAGNUM_MASTER_COUNT:-3}
+MAGNUM_MASTER_FLAVOR=${MAGNUM_MASTER_FLAVOR:-m3.quad}
+MAGNUM_NODE_COUNT=${MAGNUM_NODE_COUNT:-2}
+MAGNUM_WORKER_FLAVOR=${MAGNUM_WORKER_FLAVOR:-m3.quad}
+MAGNUM_MIN_NODE_COUNT=${MAGNUM_MIN_NODE_COUNT:-2}
+MAGNUM_MAX_NODE_COUNT=${MAGNUM_MAX_NODE_COUNT:-4}
+MAGNUM_EXPECTED_INITIAL_NODES=${MAGNUM_EXPECTED_INITIAL_NODES:-5}
