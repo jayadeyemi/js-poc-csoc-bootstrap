@@ -213,5 +213,9 @@ KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh \
 | spoke namespaces | reachable, kube-system Running |
 
 After readiness, verify the `HelloApp/poc-tenant-dev` ClusterResourceSet,
-Cinder PVC read/write, and bounded `2→3→2` autoscaling. Registration and Argo
-ApplicationSets are intentionally not part of this architecture.
+that its internal-only application `LoadBalancer` returns
+`Hello poc-tenant-dev.`, Cinder PVC read/write, and bounded `2→3→2`
+autoscaling. Verify `CSOCHelloApp/csoc` separately returns `Hello CSOC.` from
+its own internal application load balancer. Neither application may reuse the
+Kubernetes API load balancer or receive a public floating IP. Registration and
+Argo ApplicationSets are intentionally not part of this architecture.

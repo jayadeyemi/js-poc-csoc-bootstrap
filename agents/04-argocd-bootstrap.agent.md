@@ -50,8 +50,9 @@ The script applies and waits in this order:
 1. AppProjects `rgds` and `csoc-fleet`;
 2. controller Applications and their CRDs;
 3. KRO RGD definitions and generated CRDs;
-4. fleet instances under `accounts/test-poc`, beginning with
-   `ImmutableSpokeConfig/test-poc` and `SpokeIdentity/test-poc`;
+4. the CSOC-local `CSOCHelloApp/csoc` instance and fleet instances under
+   `accounts/test-poc`, beginning with `ImmutableSpokeConfig/test-poc` and
+   `SpokeIdentity/test-poc`;
 5. the controller, RGD, fleet, and root Applications. No ApplicationSet is used.
 
 The immutable account config approves one general worker flavor. Per-cluster
@@ -60,6 +61,10 @@ GPU, high-memory, or worker-class selector fields.
 
 Do not bypass these readiness gates or allow Argo pruning during an RGD
 ownership transfer.
+
+The CSOC and spoke Hello Services must retain the OpenStack internal-load-
+balancer annotation. They must not attach a floating IP or reuse either
+cluster's Kubernetes API load balancer.
 
 ## 3. Verify identity isolation and ownership
 

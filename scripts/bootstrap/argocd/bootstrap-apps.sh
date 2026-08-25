@@ -15,6 +15,7 @@ APPLICATION_DIR="${REPO_ROOT}/argocd/apps"
 CONTROLLER_DIR="${REPO_ROOT}/controllers"
 RGD_DIR="${CATALOG_ROOT}/rgds"
 ACCOUNT_DIR="${FLEET_ROOT}/accounts/test-poc"
+CSOC_DIR="${FLEET_ROOT}/csoc"
 GATE_CONFIGMAP=argocd-manual-manifest-gate
 ARGO_FIELD_MANAGER=csoc-bootstrap
 
@@ -63,7 +64,8 @@ kubectl get deployment argocd-server -n argocd >/dev/null \
   || log::die "Argo CD not found. Run 'make argocd-install' first."
 kubectl get configmap "${GATE_CONFIGMAP}" -n argocd >/dev/null \
   || log::die "Manual manifest gate missing. Run 'make argocd-manual-smoke' first."
-[[ -f "${RGD_DIR}/kustomization.yaml" && -f "${ACCOUNT_DIR}/kustomization.yaml" ]] \
+[[ -f "${RGD_DIR}/kustomization.yaml" && -f "${ACCOUNT_DIR}/kustomization.yaml" \
+   && -f "${CSOC_DIR}/kustomization.yaml" ]] \
   || log::die "RGD definitions or fleet account test-poc are unavailable"
 
 log::step 2 "Applying the rgds and csoc-fleet AppProjects"
@@ -107,6 +109,9 @@ wait_rgd autoallocatedspokenetwork
 wait_rgd dedicatedspokenetwork
 wait_crd autoallocatedspokenetworks.csoc.js2.org
 wait_crd dedicatedspokenetworks.csoc.js2.org
+apply_manifest "${RGD_DIR}/workloads/csoc-hello-app.rgd.yaml"
+wait_rgd csochelloapp
+wait_crd csochelloapps.apps.csoc.js2.org
 apply_manifest "${RGD_DIR}/workloads/hello-app.rgd.yaml"
 wait_rgd helloapp
 wait_crd helloapps.apps.csoc.js2.org
@@ -114,7 +119,9 @@ apply_manifest "${RGD_DIR}/cluster/v1/spoke-cluster.rgd.yaml"
 wait_rgd spokecluster
 wait_crd spokeclusters.csoc.js2.org
 
-log::step 5 "Manually applying fleet account test-poc in graph order"
+log::step 5 "Manually applying CSOC and fleet account instances in graph order"
+apply_manifest "${CSOC_DIR}/hello-app.yaml"
+wait_instance_ready csochelloapp csoc "" "1800s"
 apply_manifest "${ACCOUNT_DIR}/identity-config.yaml"
 wait_instance_ready immutablespokeconfig test-poc
 apply_manifest "${ACCOUNT_DIR}/identity.yaml"
