@@ -324,10 +324,13 @@ helm template capi-operator cluster-api-operator \
   --values "${render_dir}/capi-values.yaml" >/dev/null
 helm template argocd argo-cd --repo https://argoproj.github.io/argo-helm \
   --version "${ARGOCD_CHART_VERSION}" --namespace argocd \
-  --values "${REPO_ROOT}/iac/argocd/values.yaml" >"${render_dir}/argocd.yaml"
-[[ $(yq -r 'select(.kind == "Deployment" and .metadata.name == "argocd-applicationset-controller") | .spec.replicas' \
-    "${render_dir}/argocd.yaml") == 0 ]] \
-  || log::die "Argo render enables the unused ApplicationSet controller"
+  --values "${REPO_ROOT}/iac/argocd/values.yaml" \
+  --post-renderer "${REPO_ROOT}/scripts/bootstrap/argocd/filter-applicationset-controller.sh" \
+  >"${render_dir}/argocd.yaml"
+if [[ -n $(yq -r 'select(.metadata.name == "argocd-applicationset-controller") | .kind' \
+    "${render_dir}/argocd.yaml") ]]; then
+  log::die "Post-rendered Argo manifests contain the unused ApplicationSet controller"
+fi
 helm template cert-manager cert-manager --repo https://charts.jetstack.io \
   --version "v${CERT_MANAGER_VERSION}" --namespace cert-manager --set crds.enabled=true >/dev/null
 helm template kro oci://registry.k8s.io/kro/charts/kro \

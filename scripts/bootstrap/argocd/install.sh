@@ -10,6 +10,7 @@ source "${REPO_ROOT}/versions.env"
 
 ARGOCD_NAMESPACE="argocd"
 VALUES_FILE="${REPO_ROOT}/iac/argocd/values.yaml"
+POST_RENDERER="${SCRIPT_DIR}/filter-applicationset-controller.sh"
 
 log::step 1 "Verifying management cluster connectivity"
 kubectl cluster-info >/dev/null \
@@ -27,6 +28,7 @@ helm upgrade --install argocd argo/argo-cd \
   --namespace "${ARGOCD_NAMESPACE}" \
   --version "${ARGOCD_CHART_VERSION}" \
   --values "${VALUES_FILE}" \
+  --post-renderer "${POST_RENDERER}" \
   --wait \
   --timeout 10m
 
