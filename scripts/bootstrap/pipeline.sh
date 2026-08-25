@@ -23,8 +23,15 @@ log::step E "Install Argo CD"
 bash "${REPO_ROOT}/scripts/bootstrap/argocd/install.sh"
 log::step E "Manually validate manifests before enabling Argo reconciliation"
 bash "${REPO_ROOT}/scripts/bootstrap/argocd/manual-smoke-test.sh"
-log::step F "Load only the restricted test-poc spoke credential"
-bash "${REPO_ROOT}/scripts/bootstrap/credentials/create-runtime-cloud-secret.sh"
+log::step F "Load one separate restricted credential for each active spoke account"
+FLEET_ROOT="${FLEET_ROOT:-$(cd "${REPO_ROOT}/../js-poc-csoc-fleet" && pwd)}"
+mapfile -t active_accounts < <(yq -r '.resources[]?' "${FLEET_ROOT}/accounts/kustomization.yaml")
+for identity in "${active_accounts[@]}"; do
+  bash "${REPO_ROOT}/scripts/bootstrap/credentials/create-runtime-cloud-secret.sh" "${identity}"
+done
+if (( ${#active_accounts[@]} == 0 )); then
+  log::info "No spoke accounts are active; no spoke credentials were loaded"
+fi
 log::step G "Apply App-of-Apps and wait for GitOps controllers"
 bash "${REPO_ROOT}/scripts/bootstrap/argocd/bootstrap-apps.sh"
 log::success "Bootstrap complete. Git is now the control plane."

@@ -58,8 +58,8 @@ controllers/         controller Applications installed before KRO graphs
 - Spoke provisioning/workloads: a different restricted credential at
   `scripts/host/credentials/accounts/<identity>/clouds.yaml`, even when the
   CSOC and spoke identity use the same OpenStack project
-- For the initial fleet, `test-poc-cloud-config` and
-  `test-poc-workload-cloud-config` exist only in `spokeclusters-test-poc`
+- For each active identity, `<identity>-cloud-config` and
+  `<identity>-workload-cloud-config` exist only in `spokeclusters-<identity>`
 - See [scripts/host/credentials/README.md](scripts/host/credentials/README.md)
 
 ## Argo CD conventions

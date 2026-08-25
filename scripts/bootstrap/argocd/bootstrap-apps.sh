@@ -14,7 +14,8 @@ PROJECT_DIR="${REPO_ROOT}/argocd/projects"
 APPLICATION_DIR="${REPO_ROOT}/argocd/apps"
 CONTROLLER_DIR="${REPO_ROOT}/controllers"
 RGD_DIR="${CATALOG_ROOT}/rgds"
-ACCOUNT_DIR="${FLEET_ROOT}/accounts/test-poc"
+RGD_PACKAGE_DIR="${RGD_DIR}/test-poc"
+ACCOUNTS_DIR="${FLEET_ROOT}/accounts"
 CSOC_DIR="${FLEET_ROOT}/csoc"
 GATE_CONFIGMAP=argocd-manual-manifest-gate
 ARGO_FIELD_MANAGER=csoc-bootstrap
@@ -64,9 +65,9 @@ kubectl get deployment argocd-server -n argocd >/dev/null \
   || log::die "Argo CD not found. Run 'make argocd-install' first."
 kubectl get configmap "${GATE_CONFIGMAP}" -n argocd >/dev/null \
   || log::die "Manual manifest gate missing. Run 'make argocd-manual-smoke' first."
-[[ -f "${RGD_DIR}/kustomization.yaml" && -f "${ACCOUNT_DIR}/kustomization.yaml" \
+[[ -f "${RGD_DIR}/kustomization.yaml" && -f "${ACCOUNTS_DIR}/kustomization.yaml" \
    && -f "${CSOC_DIR}/kustomization.yaml" ]] \
-  || log::die "RGD definitions or fleet account test-poc are unavailable"
+  || log::die "RGD definitions or fleet entrypoints are unavailable"
 
 log::step 2 "Applying the rgds and csoc-fleet AppProjects"
 apply_manifest "${PROJECT_DIR}"
@@ -95,45 +96,85 @@ wait_application kro
 wait_crd resourcegraphdefinitions.kro.run
 
 log::step 4 "Manually applying RGD definitions in dependency order"
-apply_manifest "${RGD_DIR}/configmaps/immutable-spoke-config.rgd.yaml"
+apply_manifest "${RGD_PACKAGE_DIR}/configmaps/immutable-spoke-config.rgd.yaml"
 wait_rgd immutablespokeconfig
 wait_crd immutablespokeconfigs.csoc.js2.org
-apply_manifest "${RGD_DIR}/configmaps/spoke-environment-config.rgd.yaml"
+apply_manifest "${RGD_PACKAGE_DIR}/configmaps/spoke-environment-config.rgd.yaml"
 wait_rgd spokeenvironmentconfig
 wait_crd spokeenvironmentconfigs.csoc.js2.org
-apply_manifest "${RGD_DIR}/cluster/v1/spoke-identity.rgd.yaml"
+apply_manifest "${RGD_PACKAGE_DIR}/configmaps/spoke-network-import-config.rgd.yaml"
+wait_rgd spokenetworkimportconfig
+wait_crd spokenetworkimportconfigs.csoc.js2.org
+apply_manifest "${RGD_PACKAGE_DIR}/configmaps/spoke-shared-network-config.rgd.yaml"
+wait_rgd spokesharednetworkconfig
+wait_crd spokesharednetworkconfigs.csoc.js2.org
+apply_manifest "${RGD_PACKAGE_DIR}/cluster/v1/spoke-identity.rgd.yaml"
 wait_rgd spokeidentity
 wait_crd spokeidentities.csoc.js2.org
-apply_manifest "${RGD_DIR}/network"
+apply_manifest "${RGD_PACKAGE_DIR}/network"
 wait_rgd autoallocatedspokenetwork
 wait_rgd dedicatedspokenetwork
+wait_rgd importedspokenetwork
+wait_rgd isolatedopenstacknetwork
+wait_rgd routedspokenetwork
+wait_rgd fullymanagedspokenetwork
+wait_rgd sharedprovidernetwork
 wait_crd autoallocatedspokenetworks.csoc.js2.org
 wait_crd dedicatedspokenetworks.csoc.js2.org
-apply_manifest "${RGD_DIR}/workloads/csoc-hello-app.rgd.yaml"
-wait_rgd csochelloapp
-wait_crd csochelloapps.apps.csoc.js2.org
-apply_manifest "${RGD_DIR}/workloads/hello-app.rgd.yaml"
+wait_crd importedspokenetworks.csoc.js2.org
+wait_crd isolatedopenstacknetworks.csoc.js2.org
+wait_crd routedspokenetworks.csoc.js2.org
+wait_crd fullymanagedspokenetworks.csoc.js2.org
+wait_crd sharedprovidernetworks.csoc.js2.org
+apply_manifest "${RGD_PACKAGE_DIR}/compute/spoke-server-group.rgd.yaml"
+wait_rgd spokeservergroup
+wait_crd spokeservergroups.csoc.js2.org
+apply_manifest "${RGD_PACKAGE_DIR}/security/spoke-security-group.rgd.yaml"
+wait_rgd spokesecuritygroup
+wait_crd spokesecuritygroups.csoc.js2.org
+apply_manifest "${RGD_PACKAGE_DIR}/storage/spoke-volume.rgd.yaml"
+wait_rgd spokevolume
+wait_crd spokevolumes.csoc.js2.org
+apply_manifest "${RGD_PACKAGE_DIR}/workloads/hello-app.rgd.yaml"
 wait_rgd helloapp
 wait_crd helloapps.apps.csoc.js2.org
-apply_manifest "${RGD_DIR}/cluster/v1/spoke-cluster.rgd.yaml"
+apply_manifest "${RGD_PACKAGE_DIR}/cluster/v1/spoke-cluster.rgd.yaml"
 wait_rgd spokecluster
 wait_crd spokeclusters.csoc.js2.org
 
-log::step 5 "Manually applying CSOC and fleet account instances in graph order"
+log::step 5 "Manually applying CSOC and configured account instances in graph order"
 apply_manifest "${CSOC_DIR}/hello-app.yaml"
-wait_instance_ready csochelloapp csoc "" "1800s"
-apply_manifest "${ACCOUNT_DIR}/identity-config.yaml"
-wait_instance_ready immutablespokeconfig test-poc
-apply_manifest "${ACCOUNT_DIR}/identity.yaml"
-wait_instance_ready spokeidentity test-poc
-apply_manifest "${ACCOUNT_DIR}/spoke-config.yaml"
-wait_instance_ready spokeenvironmentconfig poc-tenant-dev spokeclusters-test-poc
-apply_manifest "${ACCOUNT_DIR}/network.yaml"
-wait_instance_ready dedicatedspokenetwork poc-tenant-dev spokeclusters-test-poc
-apply_manifest "${ACCOUNT_DIR}/cluster.yaml"
-wait_instance_ready spokecluster poc-tenant-dev spokeclusters-test-poc "1800s"
-apply_manifest "${ACCOUNT_DIR}/hello-app.yaml"
-wait_instance_ready helloapp poc-tenant-dev spokeclusters-test-poc
+wait_instance_ready helloapp csoc kro-system "1800s"
+
+mapfile -t active_accounts < <(yq -r '.resources[]?' "${ACCOUNTS_DIR}/kustomization.yaml")
+for account in "${active_accounts[@]}"; do
+  account_dir="${ACCOUNTS_DIR}/${account}"
+  namespace="spokeclusters-${account}"
+  for required in identity-config.yaml identity.yaml spoke-config.yaml network.yaml cluster.yaml; do
+    [[ -f "${account_dir}/${required}" ]] \
+      || log::die "Active account ${account} is missing ${required}"
+  done
+  spoke_name=$(yq -er '.metadata.name' "${account_dir}/cluster.yaml")
+  network_kind=$(yq -er '.kind' "${account_dir}/network.yaml" | tr '[:upper:]' '[:lower:]')
+  apply_manifest "${account_dir}/identity-config.yaml"
+  wait_instance_ready immutablespokeconfig "${account}"
+  apply_manifest "${account_dir}/identity.yaml"
+  wait_instance_ready spokeidentity "${account}"
+  apply_manifest "${account_dir}/spoke-config.yaml"
+  wait_instance_ready spokeenvironmentconfig "${spoke_name}" "${namespace}"
+  if [[ -f "${account_dir}/network-import-config.yaml" ]]; then
+    apply_manifest "${account_dir}/network-import-config.yaml"
+    wait_instance_ready spokenetworkimportconfig "${spoke_name}" "${namespace}"
+  fi
+  apply_manifest "${account_dir}/network.yaml"
+  wait_instance_ready "${network_kind}" "${spoke_name}" "${namespace}"
+  apply_manifest "${account_dir}/cluster.yaml"
+  wait_instance_ready spokecluster "${spoke_name}" "${namespace}" "3600s"
+  if [[ -f "${account_dir}/hello-app.yaml" ]]; then
+    apply_manifest "${account_dir}/hello-app.yaml"
+    wait_instance_ready helloapp "${spoke_name}" "${namespace}" "1800s"
+  fi
+done
 
 log::step 6 "Enabling Argo ownership only after manual resources are ready"
 apply_manifest "${APPLICATION_DIR}/controllers.yaml"
