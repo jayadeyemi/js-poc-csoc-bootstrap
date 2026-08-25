@@ -69,6 +69,9 @@ controllers/         controller Applications installed before KRO graphs
 - Cluster labels: `csoc.js2.org/<key>: <value>`
 - Workloads reach spokes through KRO-produced CAPI addon resources; do not add
   baseline or application ApplicationSets
+- The CSOC-local Hello workload is a direct KRO graph. CSOC and spoke Hello
+  Services use separate internal application load balancers; never attach a
+  public floating IP or reuse a CAPO/Magnum Kubernetes API load balancer.
 
 ## Custom agents
 

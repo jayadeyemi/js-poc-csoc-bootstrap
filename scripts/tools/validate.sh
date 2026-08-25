@@ -83,8 +83,8 @@ done
   || log::die "RGDs must be sourced from the app catalog"
 [[ $(yq -r '.spec.source.path' "${REPO_ROOT}/argocd/apps/rgds.yaml") == rgds ]] \
   || log::die "RGD Application path is incorrect"
-[[ $(yq -r '.spec.source.path' "${REPO_ROOT}/argocd/apps/fleet.yaml") == accounts ]] \
-  || log::die "Fleet Application must source accounts/"
+[[ $(yq -r '.spec.source.path' "${REPO_ROOT}/argocd/apps/fleet.yaml") == . ]] \
+  || log::die "Fleet Application must source the fleet root"
 [[ ! -e "${REPO_ROOT}/argocd/apps/csoc-baseline.yaml" \
    && ! -d "${REPO_ROOT}/argocd/applicationsets" ]] \
   || log::die "Baseline Applications and ApplicationSets must be removed"
@@ -101,6 +101,9 @@ done
 yq -e '.spec.namespaceResourceWhitelist[] | select(.group == "apps.csoc.js2.org" and .kind == "HelloApp")' \
   "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml" >/dev/null \
   || log::die "Fleet project does not permit HelloApp"
+yq -e '.spec.clusterResourceWhitelist[] | select(.group == "apps.csoc.js2.org" and .kind == "CSOCHelloApp")' \
+  "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml" >/dev/null \
+  || log::die "Fleet project does not permit cluster-scoped CSOCHelloApp"
 
 log::step 3 "Validating identity and network RGD restrictions"
 IDENTITY_RGD="${CATALOG_ROOT}/rgds/cluster/v1/spoke-identity.rgd.yaml"
@@ -110,8 +113,9 @@ AUTO_NETWORK_RGD="${CATALOG_ROOT}/rgds/network/auto-allocated-spoke-network.rgd.
 DEDICATED_NETWORK_RGD="${CATALOG_ROOT}/rgds/network/dedicated-spoke-network.rgd.yaml"
 SPOKE_RGD="${CATALOG_ROOT}/rgds/cluster/v1/spoke-cluster.rgd.yaml"
 HELLO_RGD="${CATALOG_ROOT}/rgds/workloads/hello-app.rgd.yaml"
+CSOC_HELLO_RGD="${CATALOG_ROOT}/rgds/workloads/csoc-hello-app.rgd.yaml"
 for rgd in "${CONFIG_RGD}" "${ENV_CONFIG_RGD}" "${IDENTITY_RGD}" "${AUTO_NETWORK_RGD}" \
-  "${DEDICATED_NETWORK_RGD}" "${SPOKE_RGD}" "${HELLO_RGD}"; do
+  "${DEDICATED_NETWORK_RGD}" "${SPOKE_RGD}" "${HELLO_RGD}" "${CSOC_HELLO_RGD}"; do
   [[ $(yq -r '.apiVersion' "${rgd}") == kro.run/v1alpha1 ]] \
     || log::die "Invalid RGD apiVersion: ${rgd}"
   if rg --line-number 'default\(' "${rgd}"; then
@@ -217,10 +221,16 @@ done
 [[ $(yq -r '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.managedSecurityGroups.allowAllInClusterTraffic' "${SPOKE_RGD}") == false ]] \
   || log::die "Spoke security groups must not allow all cluster traffic"
 
-log::step 5 "Validating accounts/test-poc and direct KRO workload delivery"
+log::step 5 "Validating CSOC, accounts/test-poc, and direct KRO workload delivery"
 ACCOUNT_DIR="${FLEET_ROOT}/accounts/test-poc"
+CSOC_DIR="${FLEET_ROOT}/csoc"
+[[ -f "${FLEET_ROOT}/kustomization.yaml" && -f "${CSOC_DIR}/kustomization.yaml" ]] \
+  || log::die "Fleet root must expose its CSOC and account packages"
 [[ -f "${FLEET_ROOT}/accounts/kustomization.yaml" && -f "${ACCOUNT_DIR}/kustomization.yaml" ]] \
   || log::die "Fleet must expose accounts/test-poc as a Kustomize package"
+[[ $(yq -r '.kind + ":" + .metadata.name' "${CSOC_DIR}/hello-app.yaml") \
+   == CSOCHelloApp:csoc ]] \
+  || log::die "Fleet must contain the CSOC-local Hello instance"
 [[ $(yq -r '.kind + ":" + .metadata.name' "${ACCOUNT_DIR}/identity-config.yaml") \
    == ImmutableSpokeConfig:test-poc ]] \
   || log::die "test-poc must own its ImmutableSpokeConfig instance"
@@ -255,14 +265,34 @@ if rg --line-number 'SpokeCluster|cluster\.x-k8s\.io|infrastructure\.cluster\.x-
     "${REPO_ROOT}/scripts/bootstrap/magnum" "${REPO_ROOT}/scripts/operations/magnum"; then
   log::die "Magnum lifecycle must manage only the CSOC management cluster"
 fi
-rg -q '<body><h1>Hello from every spoke\.</h1></body>' "${HELLO_RGD}" \
-  || log::die "HelloApp RGD message is incorrect"
+rg -Fq '<body><h1>Hello ${schema.metadata.name}.</h1></body>' "${HELLO_RGD}" \
+  || log::die "HelloApp must render the selected spoke name"
 rg -q 'replicas: \$\{string\(schema\.spec\.replicas\)\}' "${HELLO_RGD}" \
   || log::die "HelloApp must stringify replicas inside its manifest payload"
+rg -q 'service\.beta\.kubernetes\.io/openstack-internal-load-balancer: "true"' "${HELLO_RGD}" \
+  || log::die "Spoke HelloApp must use an internal OpenStack load balancer"
+rg -q 'type: LoadBalancer' "${HELLO_RGD}" \
+  || log::die "Spoke HelloApp must create its own application load balancer"
 [[ $(yq -r '.spec.schema.scope' "${HELLO_RGD}") == Namespaced ]] \
   || log::die "HelloApp must be an account-scoped workload graph"
 yq -e '.spec.resources[] | select(.id == "resourceset") | .template.kind == "ClusterResourceSet"' \
   "${HELLO_RGD}" >/dev/null || log::die "HelloApp must deploy through CAPI ClusterResourceSet"
+[[ $(yq -r '.metadata.name + ":" + .spec.schema.kind + ":" + .spec.schema.scope' "${CSOC_HELLO_RGD}") \
+   == csochelloapp:CSOCHelloApp:Cluster ]] \
+  || log::die "CSOC Hello must be a cluster-scoped direct workload graph"
+[[ $(yq -r '.spec.resources[] | select(.id == "html") | .template.data."index.html"' "${CSOC_HELLO_RGD}" \
+    | rg -o 'Hello CSOC\.') == "Hello CSOC." ]] \
+  || log::die "CSOC Hello message is incorrect"
+[[ $(yq -r '.spec.resources[] | select(.id == "service") | .template.spec.type' "${CSOC_HELLO_RGD}") \
+   == LoadBalancer ]] \
+  || log::die "CSOC Hello must create its own application load balancer"
+[[ $(yq -r '.spec.resources[] | select(.id == "service") | .template.metadata.annotations."service.beta.kubernetes.io/openstack-internal-load-balancer"' "${CSOC_HELLO_RGD}") \
+   == true ]] \
+  || log::die "CSOC Hello load balancer must remain internal"
+if rg --line-number 'floating-network-id|loadBalancerIP|0\.0\.0\.0/0' \
+    "${CATALOG_ROOT}/rgds/workloads" "${FLEET_ROOT}/csoc" "${ACCOUNT_DIR}/hello-app.yaml"; then
+  log::die "Hello workloads must not request a public or unrestricted address"
+fi
 
 log::step 6 "Rendering Kustomize and Helm packages"
 while IFS= read -r -d '' kustomization; do
