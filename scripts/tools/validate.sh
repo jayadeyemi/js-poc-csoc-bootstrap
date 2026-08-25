@@ -93,7 +93,7 @@ done
 [[ ! -e "${REPO_ROOT}/argocd/apps/csoc-baseline.yaml" \
    && ! -d "${REPO_ROOT}/argocd/applicationsets" ]] \
   || log::die "Baseline Applications and ApplicationSets must be removed"
-[[ $(yq -r '.applicationSet.enabled' "${REPO_ROOT}/iac/argocd/values.yaml") == false ]] \
+[[ $(yq -r '.applicationSet.replicas' "${REPO_ROOT}/iac/argocd/values.yaml") == 0 ]] \
   || log::die "The unused Argo ApplicationSet controller must remain disabled"
 for kind in SpokeCluster SpokeEnvironmentConfig AutoAllocatedSpokeNetwork DedicatedSpokeNetwork; do
   yq -e ".spec.namespaceResourceWhitelist[] | select(.group == \"csoc.js2.org\" and .kind == \"${kind}\")" \
@@ -324,7 +324,10 @@ helm template capi-operator cluster-api-operator \
   --values "${render_dir}/capi-values.yaml" >/dev/null
 helm template argocd argo-cd --repo https://argoproj.github.io/argo-helm \
   --version "${ARGOCD_CHART_VERSION}" --namespace argocd \
-  --values "${REPO_ROOT}/iac/argocd/values.yaml" >/dev/null
+  --values "${REPO_ROOT}/iac/argocd/values.yaml" >"${render_dir}/argocd.yaml"
+[[ $(yq -r 'select(.kind == "Deployment" and .metadata.name == "argocd-applicationset-controller") | .spec.replicas' \
+    "${render_dir}/argocd.yaml") == 0 ]] \
+  || log::die "Argo render enables the unused ApplicationSet controller"
 helm template cert-manager cert-manager --repo https://charts.jetstack.io \
   --version "v${CERT_MANAGER_VERSION}" --namespace cert-manager --set crds.enabled=true >/dev/null
 helm template kro oci://registry.k8s.io/kro/charts/kro \
