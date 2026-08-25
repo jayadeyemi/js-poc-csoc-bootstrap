@@ -95,7 +95,11 @@ done
   || log::die "Baseline Applications and ApplicationSets must be removed"
 [[ $(yq -r '.applicationSet.replicas' "${REPO_ROOT}/iac/argocd/values.yaml") == 0 ]] \
   || log::die "The unused Argo ApplicationSet controller must remain disabled"
-for kind in SpokeCluster SpokeEnvironmentConfig AutoAllocatedSpokeNetwork DedicatedSpokeNetwork; do
+for kind in SpokeCluster SpokeEnvironmentConfig SpokeNetworkImportConfig \
+  SpokeSharedNetworkConfig \
+  AutoAllocatedSpokeNetwork DedicatedSpokeNetwork ImportedSpokeNetwork \
+  IsolatedOpenStackNetwork RoutedSpokeNetwork FullyManagedSpokeNetwork \
+  SharedProviderNetwork SpokeServerGroup SpokeSecurityGroup SpokeVolume; do
   yq -e ".spec.namespaceResourceWhitelist[] | select(.group == \"csoc.js2.org\" and .kind == \"${kind}\")" \
     "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml" >/dev/null \
     || log::die "Fleet project does not permit ${kind}"
@@ -108,21 +112,32 @@ done
 yq -e '.spec.namespaceResourceWhitelist[] | select(.group == "apps.csoc.js2.org" and .kind == "HelloApp")' \
   "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml" >/dev/null \
   || log::die "Fleet project does not permit HelloApp"
-yq -e '.spec.clusterResourceWhitelist[] | select(.group == "apps.csoc.js2.org" and .kind == "CSOCHelloApp")' \
-  "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml" >/dev/null \
-  || log::die "Fleet project does not permit cluster-scoped CSOCHelloApp"
+[[ $(yq -r '.spec.orphanedResources.warn' "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml") == true ]] \
+  || log::die "Fleet project must warn about Git-retired resources awaiting deliberate teardown"
+[[ $(yq -r '.spec.syncPolicy.automated.prune' "${REPO_ROOT}/argocd/apps/fleet.yaml") == false ]] \
+  || log::die "Fleet pruning must remain disabled"
 
 log::step 3 "Validating identity and network RGD restrictions"
-IDENTITY_RGD="${CATALOG_ROOT}/rgds/cluster/v1/spoke-identity.rgd.yaml"
-CONFIG_RGD="${CATALOG_ROOT}/rgds/configmaps/immutable-spoke-config.rgd.yaml"
-ENV_CONFIG_RGD="${CATALOG_ROOT}/rgds/configmaps/spoke-environment-config.rgd.yaml"
-AUTO_NETWORK_RGD="${CATALOG_ROOT}/rgds/network/auto-allocated-spoke-network.rgd.yaml"
-DEDICATED_NETWORK_RGD="${CATALOG_ROOT}/rgds/network/dedicated-spoke-network.rgd.yaml"
-SPOKE_RGD="${CATALOG_ROOT}/rgds/cluster/v1/spoke-cluster.rgd.yaml"
-HELLO_RGD="${CATALOG_ROOT}/rgds/workloads/hello-app.rgd.yaml"
-CSOC_HELLO_RGD="${CATALOG_ROOT}/rgds/workloads/csoc-hello-app.rgd.yaml"
-for rgd in "${CONFIG_RGD}" "${ENV_CONFIG_RGD}" "${IDENTITY_RGD}" "${AUTO_NETWORK_RGD}" \
-  "${DEDICATED_NETWORK_RGD}" "${SPOKE_RGD}" "${HELLO_RGD}" "${CSOC_HELLO_RGD}"; do
+RGD_PACKAGE_ROOT="${CATALOG_ROOT}/rgds/test-poc"
+IDENTITY_RGD="${RGD_PACKAGE_ROOT}/cluster/v1/spoke-identity.rgd.yaml"
+CONFIG_RGD="${RGD_PACKAGE_ROOT}/configmaps/immutable-spoke-config.rgd.yaml"
+ENV_CONFIG_RGD="${RGD_PACKAGE_ROOT}/configmaps/spoke-environment-config.rgd.yaml"
+IMPORT_CONFIG_RGD="${RGD_PACKAGE_ROOT}/configmaps/spoke-network-import-config.rgd.yaml"
+AUTO_NETWORK_RGD="${RGD_PACKAGE_ROOT}/network/auto-allocated-spoke-network.rgd.yaml"
+DEDICATED_NETWORK_RGD="${RGD_PACKAGE_ROOT}/network/dedicated-spoke-network.rgd.yaml"
+IMPORTED_NETWORK_RGD="${RGD_PACKAGE_ROOT}/network/imported-spoke-network.rgd.yaml"
+ISOLATED_NETWORK_RGD="${RGD_PACKAGE_ROOT}/network/isolated-openstack-network.rgd.yaml"
+ROUTED_NETWORK_RGD="${RGD_PACKAGE_ROOT}/network/routed-spoke-network.rgd.yaml"
+SERVER_GROUP_RGD="${RGD_PACKAGE_ROOT}/compute/spoke-server-group.rgd.yaml"
+SECURITY_GROUP_RGD="${RGD_PACKAGE_ROOT}/security/spoke-security-group.rgd.yaml"
+VOLUME_RGD="${RGD_PACKAGE_ROOT}/storage/spoke-volume.rgd.yaml"
+SPOKE_RGD="${RGD_PACKAGE_ROOT}/cluster/v1/spoke-cluster.rgd.yaml"
+HELLO_RGD="${RGD_PACKAGE_ROOT}/workloads/hello-app.rgd.yaml"
+for rgd in "${CONFIG_RGD}" "${ENV_CONFIG_RGD}" "${IMPORT_CONFIG_RGD}" \
+  "${IDENTITY_RGD}" "${AUTO_NETWORK_RGD}" "${DEDICATED_NETWORK_RGD}" \
+  "${IMPORTED_NETWORK_RGD}" "${ISOLATED_NETWORK_RGD}" "${ROUTED_NETWORK_RGD}" \
+  "${SERVER_GROUP_RGD}" "${SECURITY_GROUP_RGD}" "${VOLUME_RGD}" \
+  "${SPOKE_RGD}" "${HELLO_RGD}"; do
   [[ $(yq -r '.apiVersion' "${rgd}") == kro.run/v1alpha1 ]] \
     || log::die "Invalid RGD apiVersion: ${rgd}"
   if rg --line-number 'default\(' "${rgd}"; then
@@ -135,7 +150,8 @@ done
   || log::die "The account-boundary API must be SpokeIdentity"
 [[ $(yq -r '.spec.schema.kind' "${CONFIG_RGD}") == ImmutableSpokeConfig ]] \
   || log::die "ImmutableSpokeConfig RGD is required"
-for config_id in accountconfig infrastructureconfig kubernetesconfig; do
+for config_id in accountconfig computeconfig networkserviceconfig storageconfig \
+  loadbalancerconfig kubernetesconfig; do
   [[ $(yq -r ".spec.resources[] | select(.id == \"${config_id}\") | .template.immutable" "${CONFIG_RGD}") == true ]] \
     || log::die "ImmutableSpokeConfig output ${config_id} must be immutable"
 done
@@ -147,7 +163,8 @@ done
 [[ $(yq -r '.spec.resources[] | select(.id == "openstackidentity") | .template.spec.namespaceSelector.matchLabels."csoc.js2.org/identity"' "${IDENTITY_RGD}") \
    == '${schema.metadata.name}' ]] \
   || log::die "CAPO identity selector must isolate one account"
-for config_id in accountconfig infrastructureconfig kubernetesconfig; do
+for config_id in accountconfig computeconfig networkserviceconfig storageconfig \
+  loadbalancerconfig kubernetesconfig; do
   [[ $(yq -r ".spec.resources[] | select(.id == \"${config_id}\") | .template.immutable" "${IDENTITY_RGD}") == true ]] \
     || log::die "SpokeIdentity output ${config_id} must be immutable"
 done
@@ -155,18 +172,25 @@ for config_id in networkconfig clusterconfig; do
   [[ $(yq -r ".spec.resources[] | select(.id == \"${config_id}\") | .template.immutable" "${ENV_CONFIG_RGD}") == true ]] \
     || log::die "SpokeEnvironmentConfig output ${config_id} must be immutable"
 done
+[[ $(yq -r '.spec.schema.spec | keys | join(",")' "${CONFIG_RGD}") \
+   == projectID,compute,network,storage,loadBalancer,kubernetes ]] \
+  || log::die "ImmutableSpokeConfig must expose separate service configuration groups"
+[[ $(yq -r '.spec.schema.spec.compute | keys | join(",")' "${CONFIG_RGD}") \
+   == imageID,sshKeyName,controlPlaneFlavor,generalWorkerFlavor,serverGroupPolicy ]] \
+  || log::die "Immutable compute config must contain one approved general worker flavor"
 [[ $(yq -r '.spec.schema.spec.kubernetes | keys | join(",")' "${CONFIG_RGD}") \
-   == version,controlPlaneCount,controlPlaneFlavor,generalWorkerFlavor ]] \
-  || log::die "Immutable Kubernetes config must contain only version, control-plane settings, and the general worker flavor"
+   == version,controlPlaneCount ]] \
+  || log::die "Immutable Kubernetes config must contain only version and control-plane count"
 [[ $(yq -r '.spec.resources[] | select(.id == "kubernetesconfig") | .template.data | keys | join(",")' "${CONFIG_RGD}") \
-   == version,controlPlaneCount,controlPlaneFlavor,generalWorkerFlavor ]] \
+   == version,controlPlaneCount ]] \
   || log::die "Generated Kubernetes ConfigMap contains mutable bounds or unsupported worker classes"
 [[ $(yq -r '.spec.schema.spec | keys | join(",")' "${ENV_CONFIG_RGD}") \
-   == environment,nodeCIDR,podCIDR,serviceCIDR ]] \
+   == environment,nodeCIDR,podCIDR,serviceCIDR,networkMTU,enableDHCP,portSecurityEnabled ]] \
   || log::die "SpokeEnvironmentConfig must not expose a worker class"
 [[ $(yq -r '.spec.resources[] | select(.id == "accountpolicy") | .template.spec.paramKind.kind' "${IDENTITY_RGD}") == SpokeIdentity ]] \
   || log::die "Account restrictions must be parameterized by SpokeIdentity"
-for network_rgd in "${AUTO_NETWORK_RGD}" "${DEDICATED_NETWORK_RGD}"; do
+for network_rgd in "${AUTO_NETWORK_RGD}" "${DEDICATED_NETWORK_RGD}" \
+  "${IMPORTED_NETWORK_RGD}" "${ISOLATED_NETWORK_RGD}" "${ROUTED_NETWORK_RGD}"; do
   [[ $(yq -r '.spec.resources[] | select(.id == "identity") | .externalRef.kind' "${network_rgd}") == SpokeIdentity ]] \
     || log::die "Network graphs must consume SpokeIdentity"
 done
@@ -186,10 +210,40 @@ done
 [[ $(yq -r '.spec.resources[] | select(.id == "routerinterface") | .template.spec.routerRef' "${DEDICATED_NETWORK_RGD}") \
    == '${router.metadata.name}' ]] \
   || log::die "Dedicated network must attach to the imported allocation router"
-for network_rgd in "${AUTO_NETWORK_RGD}" "${DEDICATED_NETWORK_RGD}"; do
+for network_rgd in "${AUTO_NETWORK_RGD}" "${DEDICATED_NETWORK_RGD}" \
+  "${IMPORTED_NETWORK_RGD}" "${ISOLATED_NETWORK_RGD}" "${ROUTED_NETWORK_RGD}"; do
   [[ $(yq -r '.spec.resources[] | select(.id == "connection") | .template.immutable' "${network_rgd}") == true ]] \
     || log::die "Network graph must emit an immutable connection ConfigMap"
 done
+for resource_id in network subnet router; do
+  [[ $(yq -r ".spec.resources[] | select(.id == \"${resource_id}\") | .template.spec.managementPolicy" "${IMPORTED_NETWORK_RGD}") == unmanaged ]] \
+    || log::die "Exact-ID imported ${resource_id} must be unmanaged"
+  [[ $(yq -r ".spec.resources[] | select(.id == \"${resource_id}\") | .template.spec.import.id" "${IMPORTED_NETWORK_RGD}") \
+     == '${importconfig.data.'"${resource_id}"'ID}' ]] \
+    || log::die "Imported ${resource_id} must use its exact immutable ID"
+done
+for managed_rgd in "${ISOLATED_NETWORK_RGD}" "${ROUTED_NETWORK_RGD}"; do
+  for resource_id in network subnet; do
+    [[ $(yq -r ".spec.resources[] | select(.id == \"${resource_id}\") | .template.spec.managementPolicy" "${managed_rgd}") == managed \
+       && $(yq -r ".spec.resources[] | select(.id == \"${resource_id}\") | .template.spec.managedOptions.onDelete" "${managed_rgd}") == delete ]] \
+      || log::die "Managed network topology must use controller-owned deletion"
+  done
+done
+[[ $(yq -r '.spec.resources[] | select(.id == "externalnetwork") | .template.spec.managementPolicy' "${ROUTED_NETWORK_RGD}") == unmanaged ]] \
+  || log::die "Routed network must import its external network without ownership"
+[[ $(yq -r '.spec.schema.spec | length' "${SERVER_GROUP_RGD}") == 0 \
+   && $(yq -r '.spec.resources[] | select(.id == "servergroup") | .template.spec.resource.policy' "${SERVER_GROUP_RGD}") \
+      == '${computeconfig.data.serverGroupPolicy}' ]] \
+  || log::die "Server-group placement policy must come from immutable compute config"
+[[ $(yq -r '.spec.schema.spec | keys | join(",")' "${VOLUME_RGD}") == sizeGB,description \
+   && $(yq -r '.spec.resources[] | select(.id == "volume") | .template.spec.resource.volumeTypeRef' "${VOLUME_RGD}") \
+      == '${volumetype.metadata.name}' ]] \
+  || log::die "Volume type/AZ must come from immutable storage config"
+[[ $(yq -r '.spec.resources[] | select(.id == "volumetype") | .template.spec.managementPolicy' "${VOLUME_RGD}") == unmanaged ]] \
+  || log::die "Approved Cinder volume type must be imported without ownership"
+yq -e '.spec.resources[] | select(.id == "securitygroup") | .template.spec.resource.rules[] | select(.direction == "ingress") | .portRange.min' \
+  "${SECURITY_GROUP_RGD}" >/dev/null \
+  || log::die "Security-group ingress must use the installed ORC rule schema"
 [[ $(yq -r '.spec.resources[] | select(.id == "subnet") | .template.spec.resource.cidr' "${DEDICATED_NETWORK_RGD}") \
    == '${networkconfig.data.nodeCIDR}' ]] \
   || log::die "Dedicated CIDR must come from its immutable input ConfigMap"
@@ -202,7 +256,8 @@ done
 [[ $(yq -r '.spec.schema.spec | keys | join(",")' "${SPOKE_RGD}") == kubernetes \
    && $(yq -r '.spec.schema.spec.kubernetes | keys | join(",")' "${SPOKE_RGD}") == minNodes,maxNodes ]] \
   || log::die "SpokeCluster must expose only mutable minNodes and maxNodes"
-for external_id in accountnamespace identity infrastructureconfig kubernetesconfig clusterconfig networkconnection; do
+for external_id in accountnamespace identity computeconfig networkserviceconfig storageconfig \
+  loadbalancerconfig kubernetesconfig clusterconfig networkconnection; do
   yq -e ".spec.resources[] | select(.id == \"${external_id}\") | .externalRef" "${SPOKE_RGD}" >/dev/null \
     || log::die "SpokeCluster is missing external reference ${external_id}"
 done
@@ -215,10 +270,10 @@ done
    == '${networkconnection.data.networkID}' ]] \
   || log::die "CAPO network must be sourced from an immutable connection ConfigMap"
 [[ $(yq -r '.spec.resources[] | select(.id == "controlplanemachinetemplate") | .template.spec.template.spec.image.id' "${SPOKE_RGD}") \
-   == '${infrastructureconfig.data.imageID}' ]] \
-  || log::die "Approved image must come from the immutable infrastructure ConfigMap"
+   == '${computeconfig.data.imageID}' ]] \
+  || log::die "Approved image must come from the immutable compute ConfigMap"
 [[ $(yq -r '.spec.resources[] | select(.id == "workermachinetemplate") | .template.spec.template.spec.flavor' "${SPOKE_RGD}") \
-   == '${kubernetesconfig.data.generalWorkerFlavor}' ]] \
+   == '${computeconfig.data.generalWorkerFlavor}' ]] \
   || log::die "Workers must use the immutable approved general flavor"
 [[ $(yq -r '.spec.resources[] | select(.id == "cloudconfigresourceset") | .template.spec.resources[0].name' "${SPOKE_RGD}") \
    == '${identity.metadata.name + "-workload-cloud-config"}' ]] \
@@ -228,36 +283,38 @@ done
 [[ $(yq -r '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.managedSecurityGroups.allowAllInClusterTraffic' "${SPOKE_RGD}") == false ]] \
   || log::die "Spoke security groups must not allow all cluster traffic"
 
-log::step 5 "Validating CSOC, accounts/test-poc, and direct KRO workload delivery"
-ACCOUNT_DIR="${FLEET_ROOT}/accounts/test-poc"
+log::step 5 "Validating the inactive account templates and unified Hello delivery"
+ACCOUNT_DIR="${FLEET_ROOT}/examples/accounts/test-poc"
 CSOC_DIR="${FLEET_ROOT}/csoc"
 [[ -f "${FLEET_ROOT}/kustomization.yaml" && -f "${CSOC_DIR}/kustomization.yaml" ]] \
   || log::die "Fleet root must expose its CSOC and account packages"
 [[ -f "${FLEET_ROOT}/accounts/kustomization.yaml" && -f "${ACCOUNT_DIR}/kustomization.yaml" ]] \
-  || log::die "Fleet must expose accounts/test-poc as a Kustomize package"
+  || log::die "Fleet must provide an account entrypoint and inactive example package"
+[[ $(yq -r '.resources | length' "${FLEET_ROOT}/accounts/kustomization.yaml") == 0 ]] \
+  || log::die "No spoke account should remain active after the requested retirement"
 [[ $(yq -r '.kind + ":" + .metadata.name' "${CSOC_DIR}/hello-app.yaml") \
-   == CSOCHelloApp:csoc ]] \
+   == HelloApp:csoc ]] \
   || log::die "Fleet must contain the CSOC-local Hello instance"
 mapfile -t hello_iac_files < <(
   {
-    git -C "${CATALOG_ROOT}" ls-files 'rgds/workloads/*hello*.yaml'
-    git -C "${FLEET_ROOT}" ls-files '*hello*.yaml'
+    find "${RGD_PACKAGE_ROOT}/workloads" -maxdepth 1 -type f -name '*hello*.yaml' -printf 'rgds/test-poc/workloads/%f\n'
+    find "${FLEET_ROOT}/csoc" -maxdepth 1 -type f -name '*hello*.yaml' -printf 'csoc/%f\n'
   } | sort
 )
 [[ "${hello_iac_files[*]}" == \
-   "accounts/test-poc/hello-app.yaml csoc/hello-app.yaml rgds/workloads/csoc-hello-app.rgd.yaml rgds/workloads/hello-app.rgd.yaml" ]] \
-  || log::die "Expected exactly two Hello RGD definitions and two Hello instances"
+   "csoc/hello-app.yaml rgds/test-poc/workloads/hello-app.rgd.yaml" ]] \
+  || log::die "Expected exactly one active Hello RGD and one active CSOC instance"
 [[ $(yq -r '.kind + ":" + .metadata.name' "${ACCOUNT_DIR}/identity-config.yaml") \
    == ImmutableSpokeConfig:test-poc ]] \
-  || log::die "test-poc must own its ImmutableSpokeConfig instance"
+  || log::die "The inactive example must include ImmutableSpokeConfig"
 [[ $(yq -r '.kind + ":" + .metadata.name' "${ACCOUNT_DIR}/identity.yaml") \
    == SpokeIdentity:test-poc ]] \
   || log::die "test-poc must use the SpokeIdentity API"
-for file in spoke-config.yaml network.yaml cluster.yaml hello-app.yaml; do
+for file in spoke-config.yaml network-dedicated.yaml cluster.yaml hello-app.yaml; do
   [[ $(yq -r '.metadata.namespace' "${ACCOUNT_DIR}/${file}") == spokeclusters-test-poc ]] \
     || log::die "${file} must be isolated in spokeclusters-test-poc"
 done
-for file in spoke-config.yaml network.yaml cluster.yaml hello-app.yaml; do
+for file in spoke-config.yaml network-dedicated.yaml cluster.yaml hello-app.yaml; do
   [[ $(yq -r '.metadata.name' "${ACCOUNT_DIR}/${file}") == poc-tenant-dev ]] \
     || log::die "${file} must compose the poc-tenant-dev graph"
 done
@@ -266,7 +323,7 @@ max_nodes=$(yq -er '.spec.kubernetes.maxNodes' "${ACCOUNT_DIR}/cluster.yaml")
 (( min_nodes >= 1 && min_nodes <= max_nodes && max_nodes <= 4 )) \
   || log::die "Invalid test-poc worker bounds"
 [[ $(yq -r '.spec.kubernetes | keys | join(",")' "${ACCOUNT_DIR}/identity-config.yaml") \
-   == version,controlPlaneCount,controlPlaneFlavor,generalWorkerFlavor ]] \
+   == version,controlPlaneCount ]] \
   || log::die "test-poc immutable config must not contain scale bounds or unsupported worker classes"
 [[ $(yq -r '.spec | keys | join(",")' "${ACCOUNT_DIR}/cluster.yaml") == kubernetes \
    && $(yq -r '.spec.kubernetes | keys | join(",")' "${ACCOUNT_DIR}/cluster.yaml") == minNodes,maxNodes ]] \
@@ -274,7 +331,8 @@ max_nodes=$(yq -er '.spec.kubernetes.maxNodes' "${ACCOUNT_DIR}/cluster.yaml")
 node_cidr=$(yq -er '.spec.nodeCIDR' "${ACCOUNT_DIR}/spoke-config.yaml")
 [[ ${node_cidr} =~ ^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.) ]] \
   || log::die "Dedicated network CIDR is not RFC1918"
-if rg --line-number '(secret(Name|Ref)|applicationCredential|credentialSecret):' "${FLEET_ROOT}/accounts"; then
+if rg --line-number '(secret(Name|Ref)|applicationCredential|credentialSecret):' \
+    "${FLEET_ROOT}/accounts" "${FLEET_ROOT}/examples"; then
   log::die "Fleet instances must not name or embed credentials"
 fi
 if rg --line-number 'SpokeCluster|cluster\.x-k8s\.io|infrastructure\.cluster\.x-k8s\.io' \
@@ -291,22 +349,21 @@ rg -q 'type: LoadBalancer' "${HELLO_RGD}" \
   || log::die "Spoke HelloApp must create its own application load balancer"
 [[ $(yq -r '.spec.schema.scope' "${HELLO_RGD}") == Namespaced ]] \
   || log::die "HelloApp must be an account-scoped workload graph"
+[[ $(yq -r '.spec.schema.spec.target' "${HELLO_RGD}") == 'string | default="spoke" enum="csoc,spoke"' ]] \
+  || log::die "HelloApp must explicitly select CSOC or spoke delivery"
 yq -e '.spec.resources[] | select(.id == "resourceset") | .template.kind == "ClusterResourceSet"' \
   "${HELLO_RGD}" >/dev/null || log::die "HelloApp must deploy through CAPI ClusterResourceSet"
-[[ $(yq -r '.metadata.name + ":" + .spec.schema.kind + ":" + .spec.schema.scope' "${CSOC_HELLO_RGD}") \
-   == csochelloapp:CSOCHelloApp:Cluster ]] \
-  || log::die "CSOC Hello must be a cluster-scoped direct workload graph"
-[[ $(yq -r '.spec.resources[] | select(.id == "html") | .template.data."index.html"' "${CSOC_HELLO_RGD}" \
+[[ $(yq -r '.spec.resources[] | select(.id == "csochtml") | .template.data."index.html"' "${HELLO_RGD}" \
     | rg -o 'Hello CSOC\.') == "Hello CSOC." ]] \
   || log::die "CSOC Hello message is incorrect"
-[[ $(yq -r '.spec.resources[] | select(.id == "service") | .template.spec.type' "${CSOC_HELLO_RGD}") \
+[[ $(yq -r '.spec.resources[] | select(.id == "csocservice") | .template.spec.type' "${HELLO_RGD}") \
    == LoadBalancer ]] \
   || log::die "CSOC Hello must create its own application load balancer"
-[[ $(yq -r '.spec.resources[] | select(.id == "service") | .template.metadata.annotations."service.beta.kubernetes.io/openstack-internal-load-balancer"' "${CSOC_HELLO_RGD}") \
+[[ $(yq -r '.spec.resources[] | select(.id == "csocservice") | .template.metadata.annotations."service.beta.kubernetes.io/openstack-internal-load-balancer"' "${HELLO_RGD}") \
    == true ]] \
   || log::die "CSOC Hello load balancer must remain internal"
 if rg --line-number 'floating-network-id|loadBalancerIP|0\.0\.0\.0/0' \
-    "${CATALOG_ROOT}/rgds/workloads" "${FLEET_ROOT}/csoc" "${ACCOUNT_DIR}/hello-app.yaml"; then
+    "${RGD_PACKAGE_ROOT}/workloads" "${FLEET_ROOT}/csoc" "${ACCOUNT_DIR}/hello-app.yaml"; then
   log::die "Hello workloads must not request a public or unrestricted address"
 fi
 
@@ -339,5 +396,6 @@ helm template kro oci://registry.k8s.io/kro/charts/kro \
 log::step 7 "Running local lifecycle and credential regression tests"
 bash "${REPO_ROOT}/tests/magnum/run.sh"
 bash "${REPO_ROOT}/tests/credentials/run.sh"
+bash "${REPO_ROOT}/tests/spokes/run.sh"
 
 log::success "All modular KRO non-destructive validation checks passed."

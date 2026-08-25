@@ -41,6 +41,8 @@ separate because they inspect provider state or perform gated cleanup.
 - `operations/magnum/inventory-templates.sh`: read-only template inventory
 - `operations/magnum/delete-owned.sh`: exact-UUID, ownership-gated deletion or
   deletion monitoring
+- `operations/spokes/destroy-spoke.sh`: Git-retirement and project-gated
+  workload → CAPI/CAPO → KRO/ORC spoke teardown
 
 ## `lib/` — source-only Bash modules
 
@@ -71,4 +73,6 @@ important boundaries are:
 - `make magnum-diagnose`, `make magnum-templates`: read-only operations
 - `bash scripts/operations/magnum/delete-owned.sh <uuid>`: reviewed,
   exact-UUID operation
+- `bash scripts/operations/spokes/destroy-spoke.sh --identity <id> --spoke
+  <name> --confirm <name>`: reviewed spoke teardown
 - `make validate`: local checks only

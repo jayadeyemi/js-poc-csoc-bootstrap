@@ -10,8 +10,10 @@ tools:
 
 # Spoke Cluster Provisioning
 
-**Prerequisite:** Agent 04 completed — the `accounts/test-poc` graph instances
-exist and all controller CRDs are Established.
+**Prerequisite:** Agent 04 completed, the intended account is explicitly listed
+in `accounts/kustomization.yaml`, and all controller/generated CRDs are
+Established. `test-poc` below is an inactive example until deliberately
+activated from the fleet examples.
 **Duration:** 15–30 minutes for full provisioning.
 
 ## Container invocation pattern
@@ -30,7 +32,7 @@ KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh \
 
 Confirm:
 - `spec.kubernetes.minNodes: 2`, `maxNodes: 4`
-- `test-poc-kubernetes-config` contains one approved `generalWorkerFlavor`
+- `test-poc-compute-service-config` contains one approved `generalWorkerFlavor`
 - no immutable ConfigMap or environment instance contains `minWorkers`,
   `maxWorkers`, GPU, high-memory, or `nodeClass` fields
 
@@ -215,7 +217,7 @@ KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh \
 After readiness, verify the `HelloApp/poc-tenant-dev` ClusterResourceSet,
 that its internal-only application `LoadBalancer` returns
 `Hello poc-tenant-dev.`, Cinder PVC read/write, and bounded `2→3→2`
-autoscaling. Verify `CSOCHelloApp/csoc` separately returns `Hello CSOC.` from
+autoscaling. Verify `HelloApp/csoc` separately returns `Hello CSOC.` from
 its own internal application load balancer. Neither application may reuse the
 Kubernetes API load balancer or receive a public floating IP. Registration and
 Argo ApplicationSets are intentionally not part of this architecture.

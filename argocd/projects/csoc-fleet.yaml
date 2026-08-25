@@ -7,6 +7,8 @@ metadata:
     argocd.argoproj.io/sync-wave: "-20"
 spec:
   description: "Account-scoped KRO identity, configuration, network, cluster, and workload instances."
+  orphanedResources:
+    warn: true
   sourceRepos:
     - https://github.com/jayadeyemi/js-poc-csoc-fleet
   destinations:
@@ -15,8 +17,6 @@ spec:
     - server: https://kubernetes.default.svc
       namespace: "spokeclusters-*"
   clusterResourceWhitelist:
-    - group: apps.csoc.js2.org
-      kind: CSOCHelloApp
     - group: csoc.js2.org
       kind: ImmutableSpokeConfig
     - group: csoc.js2.org
@@ -27,8 +27,28 @@ spec:
     - group: csoc.js2.org
       kind: SpokeEnvironmentConfig
     - group: csoc.js2.org
+      kind: SpokeNetworkImportConfig
+    - group: csoc.js2.org
+      kind: SpokeSharedNetworkConfig
+    - group: csoc.js2.org
       kind: AutoAllocatedSpokeNetwork
     - group: csoc.js2.org
       kind: DedicatedSpokeNetwork
+    - group: csoc.js2.org
+      kind: ImportedSpokeNetwork
+    - group: csoc.js2.org
+      kind: IsolatedOpenStackNetwork
+    - group: csoc.js2.org
+      kind: RoutedSpokeNetwork
+    - group: csoc.js2.org
+      kind: FullyManagedSpokeNetwork
+    - group: csoc.js2.org
+      kind: SharedProviderNetwork
+    - group: csoc.js2.org
+      kind: SpokeServerGroup
+    - group: csoc.js2.org
+      kind: SpokeSecurityGroup
+    - group: csoc.js2.org
+      kind: SpokeVolume
     - group: apps.csoc.js2.org
       kind: HelloApp

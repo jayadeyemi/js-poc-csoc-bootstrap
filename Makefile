@@ -15,6 +15,7 @@ export OS_CLOUD
 	magnum-configure-nodegroup magnum-diagnose magnum-verify magnum-verify-autoscaling \
 	capi-secret \
 	argocd-install argocd-manual-smoke argocd-bootstrap argocd-status \
+	destroy-spoke \
 	bootstrap
 
 help: ## Show available targets
@@ -63,8 +64,15 @@ magnum-verify-autoscaling: ## Exercise management workers within bounds
 	bash scripts/bootstrap/magnum/verify-autoscaling.sh
 
 # ── CAPI ──────────────────────────────────────────────────────────────────────
-capi-secret: ## Load/update the restricted test-poc CAPO/ORC and workload secrets
-	bash scripts/bootstrap/credentials/create-runtime-cloud-secret.sh
+capi-secret: ## Load/update restricted CAPO/ORC and workload secrets (IDENTITY=test-poc)
+	bash scripts/bootstrap/credentials/create-runtime-cloud-secret.sh $${IDENTITY:-test-poc}
+
+# ── Spoke lifecycle ───────────────────────────────────────────────────────────
+destroy-spoke: ## Retire a Git-removed spoke (IDENTITY=test-poc SPOKE=poc-tenant-dev)
+	bash scripts/operations/spokes/destroy-spoke.sh \
+	  --identity $${IDENTITY:-test-poc} \
+	  --spoke $${SPOKE} \
+	  --confirm $${SPOKE}
 
 # ── Argo CD ────────────────────────────────────────────────────────────────
 argocd-install: ## Install Argo CD via Helm on the management cluster
