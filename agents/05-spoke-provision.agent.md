@@ -208,7 +208,7 @@ KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh \
 | Check | Expected |
 |---|---|
 | KubeadmControlPlane ready | true |
-| MachineDeployment ready replicas | 2/2 |
+| MachineDeployment ready replicas | 1/1 |
 | calico HelmChartProxy | Ready=True |
 | openstack-ccm HelmChartProxy | Ready=True |
 | cinder-csi HelmChartProxy | Ready=True |
@@ -217,9 +217,10 @@ KUBECONFIG_DIR="$KDIR" bash scripts/host/container/run.sh \
 | spoke namespaces | reachable, kube-system Running |
 
 After readiness, verify the `HelloApp/poc-tenant-dev` ClusterResourceSet,
-that its internal-only application `LoadBalancer` returns
-`Hello poc-tenant-dev.`, Cinder PVC read/write, and bounded `2→3→2`
+that its separate public application `LoadBalancer` permits only the immutable
+local-host `/32` and returns `Hello poc-tenant-dev.`, Cinder PVC read/write,
+and bounded `1→2→1`
 autoscaling. Verify `HelloApp/csoc` separately returns `Hello CSOC.` from
 its own internal application load balancer. Neither application may reuse the
-Kubernetes API load balancer or receive a public floating IP. Registration and
-Argo ApplicationSets are intentionally not part of this architecture.
+Kubernetes API load balancer. Registration and Argo ApplicationSets are
+intentionally not part of this architecture.

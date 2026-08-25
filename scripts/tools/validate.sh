@@ -222,6 +222,9 @@ done
 [[ $(yq -r '.spec.resources[] | select(.id == "kubernetesconfig") | .template.data | keys | join(",")' "${CONFIG_RGD}") \
    == version,controlPlaneCount ]] \
   || log::die "Generated Kubernetes ConfigMap contains mutable bounds or unsupported worker classes"
+[[ $(yq -r '.spec.resources[] | select(.id == "networkserviceconfig") | .template.data.applicationAllowedCIDR' "${CONFIG_RGD}") \
+   == '${schema.spec.network.applicationAllowedCIDR}' ]] \
+  || log::die "Application access CIDR must be copied into immutable network configuration"
 [[ $(yq -r '.spec.schema.spec | keys | join(",")' "${ENV_CONFIG_RGD}") \
    == environment,nodeCIDR,podCIDR,serviceCIDR,networkMTU,enableDHCP,portSecurityEnabled ]] \
   || log::die "SpokeEnvironmentConfig must not expose a worker class"
@@ -390,6 +393,9 @@ max_nodes=$(yq -er '.spec.kubernetes.maxNodes' "${ACCOUNT_DIR}/cluster.yaml")
 [[ $(yq -r '.spec.network.apiServerAllowedCIDR' "${ACCOUNT_DIR}/identity-config.yaml") \
    == 149.165.155.5/32 ]] \
   || log::die "Development spoke API must be restricted to the reviewed CSOC router SNAT address"
+[[ $(yq -r '.spec.network.applicationAllowedCIDR' "${ACCOUNT_DIR}/identity-config.yaml") \
+   == 129.79.197.76/32 ]] \
+  || log::die "Development application access must be restricted to the reviewed local-host egress address"
 [[ ! -e "${ACCOUNT_DIR}/network-dedicated.yaml" ]] \
   || log::die "Active accounts must expose the selected graph only as network.yaml"
 [[ $(yq -r '.spec.kubernetes | keys | join(",")' "${ACCOUNT_DIR}/identity-config.yaml") \
@@ -413,8 +419,6 @@ rg -Fq '<body><h1>Hello ${schema.metadata.name}.</h1></body>' "${HELLO_RGD}" \
   || log::die "HelloApp must render the selected spoke name"
 rg -q 'replicas: \$\{string\(schema\.spec\.replicas\)\}' "${HELLO_RGD}" \
   || log::die "HelloApp must stringify replicas inside its manifest payload"
-rg -q 'service\.beta\.kubernetes\.io/openstack-internal-load-balancer: "true"' "${HELLO_RGD}" \
-  || log::die "Spoke HelloApp must use an internal OpenStack load balancer"
 rg -q 'type: LoadBalancer' "${HELLO_RGD}" \
   || log::die "Spoke HelloApp must create its own application load balancer"
 [[ $(yq -r '.spec.schema.scope' "${HELLO_RGD}") == Namespaced ]] \
@@ -432,7 +436,21 @@ yq -e '.spec.resources[] | select(.id == "resourceset") | .template.kind == "Clu
 [[ $(yq -r '.spec.resources[] | select(.id == "csocservice") | .template.metadata.annotations."service.beta.kubernetes.io/openstack-internal-load-balancer"' "${HELLO_RGD}") \
    == true ]] \
   || log::die "CSOC Hello load balancer must remain internal"
-if rg --line-number 'floating-network-id|loadBalancerIP|0\.0\.0\.0/0' \
+HELLO_SPOKE_PAYLOAD=$(yq -r '.spec.resources[] | select(.id == "workload") | .template.data."hello-app.yaml"' "${HELLO_RGD}")
+for expected_hello_setting in \
+  'service.beta.kubernetes.io/openstack-internal-load-balancer: "false"' \
+  'loadbalancer.openstack.org/floating-network-id: ${spokenetworkconnection.data.externalNetworkID}' \
+  'loadbalancer.openstack.org/subnet-id: ${spokenetworkconnection.data.subnetID}' \
+  'loadBalancerSourceRanges:' \
+  '- ${spokenetworkconfig.data.applicationAllowedCIDR}'; do
+  rg -Fq -- "${expected_hello_setting}" <<<"${HELLO_SPOKE_PAYLOAD}" \
+    || log::die "Spoke Hello public load balancer is missing: ${expected_hello_setting}"
+done
+for external_id in spokeaccountnamespace spokeidentity spokenetworkconfig spokenetworkconnection; do
+  yq -e ".spec.resources[] | select(.id == \"${external_id}\") | .externalRef" "${HELLO_RGD}" >/dev/null \
+    || log::die "Spoke Hello is missing restricted external reference ${external_id}"
+done
+if rg --line-number 'loadBalancerIP|0\.0\.0\.0/0' \
     "${RGD_PACKAGE_ROOT}/workloads" "${FLEET_ROOT}/csoc" "${ACCOUNT_DIR}/hello-app.yaml"; then
   log::die "Hello workloads must not request a public or unrestricted address"
 fi

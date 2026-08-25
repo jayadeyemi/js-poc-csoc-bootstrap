@@ -175,11 +175,15 @@ spec:
       containers:
         - name: kubectl
           image: registry.k8s.io/kubectl:v${KUBECTL_VERSION}
-          command: [/bin/sh, -ec]
+          command: [kubectl]
           args:
-            - |
-              kubectl --kubeconfig=/workload/value get namespace hello-app -o name || true
-              kubectl --kubeconfig=/workload/value delete namespace hello-app --ignore-not-found=true --wait=true --timeout=15m
+            - --kubeconfig=/workload/value
+            - delete
+            - namespace
+            - hello-app
+            - --ignore-not-found=true
+            - --wait=true
+            - --timeout=15m
           volumeMounts:
             - name: workload-kubeconfig
               mountPath: /workload

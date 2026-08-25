@@ -24,7 +24,7 @@ instances have been manually server-side dry-run/applied in dependency order.
 | `js-poc-csoc-fleet/accounts/<identity>/spoke-config.yaml` | Set write-once environment, node/pod/service CIDRs, MTU, DHCP, and port-security allocation inputs. |
 | `js-poc-csoc-fleet/accounts/<identity>/network.yaml` | Select exactly one network RGD. Add `network-import-config.yaml` only for exact-ID import. |
 | `js-poc-csoc-fleet/accounts/<identity>/cluster.yaml` | Set only mutable `minNodes` and `maxNodes`. |
-| `js-poc-csoc-fleet/accounts/<identity>/hello-app.yaml` | Optional internal Hello workload for that spoke. |
+| `js-poc-csoc-fleet/accounts/<identity>/hello-app.yaml` | Optional spoke Hello workload; public access is restricted by the immutable account `/32`. |
 | `js-poc-csoc-fleet/csoc/hello-app.yaml` | CSOC-local `HelloApp` instance; normally retain the reviewed defaults. |
 | `js-poc-csoc-app-catalog/rgds/test-poc/` | Review the tested OpenStack profile; Argo renders it only through `rgds/kustomization.yaml`. |
 

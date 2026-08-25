@@ -45,9 +45,9 @@ inventory.
   SSH public key, networks, Kubernetes version, and flavors come from immutable
   blocks. The Nova keypair itself is owned by a `SpokeKeypair` KRO/ORC graph.
 - Do not add GPU, high-memory, or per-cluster worker-class choices.
-- CSOC and spoke Hello workloads use separate internal application load
-  balancers. Never reuse Magnum/CAPO API load balancers or attach public
-  floating IPs without a separately reviewed restricted-access design.
+- CSOC Hello remains internal. Spoke Hello uses its own external application
+  load balancer only with a tracked immutable source `/32`. Never reuse
+  Magnum/CAPO API load balancers.
 - Apply projects, controllers, RGDs, generated CRDs, and trusted instances
   manually in dependency order before enabling Argo ownership.
 - Use server-side apply and keep Argo pruning disabled for destructive fleet

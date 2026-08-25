@@ -24,7 +24,7 @@ for required in \
     || { printf 'not ok - missing destroy safety contract: %s\n' "${required}" >&2; exit 1; }
 done
 
-workload_line=$(rg -n -F 'delete namespace hello-app' "${DESTROY_SCRIPT}" | head -1 | cut -d: -f1)
+workload_line=$(rg -n -F 'WORKLOAD_CLEANUP_JOB=' "${DESTROY_SCRIPT}" | head -1 | cut -d: -f1)
 cluster_line=$(rg -n -F 'kubectl delete spokecluster' "${DESTROY_SCRIPT}" | head -1 | cut -d: -f1)
 network_line=$(rg -n -F 'kubectl delete "${NETWORK_KIND}"' "${DESTROY_SCRIPT}" | head -1 | cut -d: -f1)
 keypair_line=$(rg -n -F 'kubectl delete spokekeypair' "${DESTROY_SCRIPT}" | head -1 | cut -d: -f1)
