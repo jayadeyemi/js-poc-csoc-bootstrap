@@ -76,6 +76,7 @@ wait_openstack_absent() {
 
 log::step 1 "Proving Git and Argo no longer declare '${SPOKE}'"
 git -C "${FLEET_ROOT}" fetch --quiet origin main
+DESIRED_REVISION=$(git -C "${FLEET_ROOT}" rev-parse origin/main)
 DESIRED_TREE="$(mktemp -d)"
 cleanup() {
   rm -rf -- "${DESIRED_TREE}"
@@ -89,10 +90,15 @@ if SPOKE_NAME="${SPOKE}" SPOKE_NAMESPACE="${NAMESPACE}" yq -e \
     "${EVIDENCE_DIR}/fleet-default-branch.yaml" >/dev/null; then
   log::die "Fleet origin/main still declares ${NAMESPACE}/${SPOKE}; merge its removal first"
 fi
-[[ "$(kubectl get application csoc-fleet -n argocd -o jsonpath='{.status.sync.status}')" == Synced ]] \
-  || log::die "Argo Application csoc-fleet must be Synced before deletion"
-[[ "$(kubectl get application csoc-fleet -n argocd -o jsonpath='{.spec.syncPolicy.automated.prune}')" == false ]] \
-  || log::die "csoc-fleet must retain prune=false for deliberate deletion"
+ACTUAL_REVISION=$(kubectl get application csoc-fleet -n argocd -o jsonpath='{.status.sync.revision}')
+[[ "${ACTUAL_REVISION}" == "${DESIRED_REVISION}" ]] \
+  || log::die "csoc-fleet has not compared the exact fleet origin/main retirement commit"
+[[ "$(kubectl get application csoc-fleet -n argocd -o jsonpath='{.status.operationState.phase}')" == Succeeded ]] \
+  || log::die "csoc-fleet must complete a non-pruning sync at the retirement commit"
+[[ "$(kubectl get application csoc-fleet -n argocd -o jsonpath='{.status.operationState.syncResult.revision}')" == "${DESIRED_REVISION}" ]] \
+  || log::die "csoc-fleet's successful sync does not match the retirement commit"
+[[ "$(kubectl get application csoc-fleet -n argocd -o jsonpath='{.spec.syncPolicy.automated.prune}')" != true ]] \
+  || log::die "csoc-fleet must not enable pruning during deliberate deletion"
 
 log::step 2 "Capturing Kubernetes, CAPI, KRO, and exact OpenStack ownership"
 kubectl get namespace "${NAMESPACE}" -o json >"${EVIDENCE_DIR}/namespace.json"
@@ -136,10 +142,16 @@ NETWORK_ID=$(jq -r '.status.networkID // ""' "${EVIDENCE_DIR}/network-graph.json
 SUBNET_ID=$(jq -r '.status.subnetID // ""' "${EVIDENCE_DIR}/network-graph.json")
 ROUTER_ID=$(jq -r '.status.routerID // ""' "${EVIDENCE_DIR}/network-graph.json")
 API_LB_ID=$(jq -r '.status.loadBalancerID // ""' "${EVIDENCE_DIR}/spokecluster.json")
+KEYPAIR_NAME=
+if kubectl get spokekeypair "${SPOKE}" -n "${NAMESPACE}" -o json \
+    >"${EVIDENCE_DIR}/keypair-graph.json" 2>/dev/null; then
+  KEYPAIR_NAME=$(jq -r '.status.keypairName // ""' "${EVIDENCE_DIR}/keypair-graph.json")
+fi
 jq -n --arg identity "${IDENTITY}" --arg spoke "${SPOKE}" --arg namespace "${NAMESPACE}" \
   --arg networkKind "${NETWORK_KIND}" --arg networkID "${NETWORK_ID}" \
   --arg subnetID "${SUBNET_ID}" --arg routerID "${ROUTER_ID}" --arg apiLoadBalancerID "${API_LB_ID}" \
-  '{identity:$identity,spoke:$spoke,namespace:$namespace,networkKind:$networkKind,networkID:$networkID,subnetID:$subnetID,routerID:$routerID,apiLoadBalancerID:$apiLoadBalancerID}' \
+  --arg keypairName "${KEYPAIR_NAME}" \
+  '{identity:$identity,spoke:$spoke,namespace:$namespace,networkKind:$networkKind,networkID:$networkID,subnetID:$subnetID,routerID:$routerID,apiLoadBalancerID:$apiLoadBalancerID,keypairName:$keypairName}' \
   >"${EVIDENCE_DIR}/ownership.json"
 
 WORKLOAD_KUBECONFIG="$(mktemp)"
@@ -190,7 +202,12 @@ elif [[ -n "${ROUTER_ID}" ]]; then
     || log::die "Shared/imported router ${ROUTER_ID} was unexpectedly removed"
 fi
 
-log::step 6 "Deleting write-once spoke blocks after infrastructure cleanup"
+log::step 6 "Deleting the ORC-managed keypair after every CAPI machine is gone"
+kubectl delete spokekeypair "${SPOKE}" -n "${NAMESPACE}" \
+  --ignore-not-found --wait=true --timeout=15m
+wait_openstack_absent keypair "${KEYPAIR_NAME}" 900
+
+log::step 7 "Deleting write-once spoke blocks after infrastructure cleanup"
 kubectl delete spokeenvironmentconfig "${SPOKE}" -n "${NAMESPACE}" \
   --ignore-not-found --wait=true --timeout=10m
 kubectl delete spokenetworkimportconfig "${SPOKE}" -n "${NAMESPACE}" \

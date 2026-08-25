@@ -47,6 +47,8 @@ spec:
     - group: csoc.js2.org
       kind: SpokeServerGroup
     - group: csoc.js2.org
+      kind: SpokeKeypair
+    - group: csoc.js2.org
       kind: SpokeSecurityGroup
     - group: csoc.js2.org
       kind: SpokeVolume

@@ -140,11 +140,13 @@ Spoke retirement has two separate gates because the fleet Application uses
 `automated.prune: false`:
 
 1. Remove the spoke's `HelloApp`, `SpokeCluster`, selected network graph,
-   `SpokeEnvironmentConfig`, and—only when retiring the whole account—its
+   `SpokeKeypair`, `SpokeEnvironmentConfig`, and—only when retiring the whole account—its
    `SpokeIdentity` and `ImmutableSpokeConfig` manifests from the fleet repo.
    Remove the account from `accounts/kustomization.yaml`, merge to `main`, and
-   wait for `Application/csoc-fleet` to be `Synced`. With pruning disabled, the
-   live objects remain for the reviewed operation.
+   complete a manual non-pruning sync at that exact commit. Argo will normally
+   report `OutOfSync` because the deliberately retained live objects are now
+   extraneous; the destroy script verifies the successful operation revision
+   instead. With pruning disabled, the live objects remain for review.
 2. Run the ownership-gated script with an exact confirmation:
 
    ```bash
@@ -159,7 +161,7 @@ The script archives non-secret ownership evidence under
 `.state/spoke-destroy/`, verifies the account's restricted credential and
 OpenStack project, deletes the workload namespace and `HelloApp`, deletes the
 `SpokeCluster`, waits for CAPI/CAPO servers and API load balancer to disappear,
-then deletes the KRO network graph. A dedicated/shared-router graph deletes only
+then deletes the KRO network graph and ORC-managed keypair. A dedicated/shared-router graph deletes only
 its managed interface, subnet, and network and proves the imported router still
 exists. An exact-ID or auto-allocated import is never deleted in OpenStack.
 

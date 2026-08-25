@@ -52,7 +52,7 @@ The script applies and waits in this order:
 3. KRO RGD definitions and generated CRDs;
 4. the CSOC-local `HelloApp/csoc` instance and every account listed in
    `accounts/kustomization.yaml`, beginning with its `ImmutableSpokeConfig` and
-   `SpokeIdentity`;
+   `SpokeIdentity`, then its ORC-managed `SpokeKeypair` before `SpokeCluster`;
 5. the controller, RGD, fleet, and root Applications. No ApplicationSet is used.
 
 The immutable account config approves one general worker flavor. Per-cluster

@@ -130,7 +130,7 @@ for kind in SpokeCluster SpokeEnvironmentConfig SpokeNetworkImportConfig \
   SpokeSharedNetworkConfig \
   AutoAllocatedSpokeNetwork DedicatedSpokeNetwork ImportedSpokeNetwork \
   IsolatedOpenStackNetwork RoutedSpokeNetwork FullyManagedSpokeNetwork \
-  SharedProviderNetwork SpokeServerGroup SpokeSecurityGroup SpokeVolume; do
+  SharedProviderNetwork SpokeKeypair SpokeServerGroup SpokeSecurityGroup SpokeVolume; do
   yq -e ".spec.namespaceResourceWhitelist[] | select(.group == \"csoc.js2.org\" and .kind == \"${kind}\")" \
     "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml" >/dev/null \
     || log::die "Fleet project does not permit ${kind}"
@@ -166,6 +166,7 @@ IMPORTED_NETWORK_RGD="${RGD_PACKAGE_ROOT}/network/imported-spoke-network.rgd.yam
 ISOLATED_NETWORK_RGD="${RGD_PACKAGE_ROOT}/network/isolated-openstack-network.rgd.yaml"
 ROUTED_NETWORK_RGD="${RGD_PACKAGE_ROOT}/network/routed-spoke-network.rgd.yaml"
 SERVER_GROUP_RGD="${RGD_PACKAGE_ROOT}/compute/spoke-server-group.rgd.yaml"
+KEYPAIR_RGD="${RGD_PACKAGE_ROOT}/compute/spoke-keypair.rgd.yaml"
 SECURITY_GROUP_RGD="${RGD_PACKAGE_ROOT}/security/spoke-security-group.rgd.yaml"
 VOLUME_RGD="${RGD_PACKAGE_ROOT}/storage/spoke-volume.rgd.yaml"
 SPOKE_RGD="${RGD_PACKAGE_ROOT}/cluster/v1/spoke-cluster.rgd.yaml"
@@ -173,7 +174,7 @@ HELLO_RGD="${RGD_PACKAGE_ROOT}/workloads/hello-app.rgd.yaml"
 for rgd in "${CONFIG_RGD}" "${ENV_CONFIG_RGD}" "${IMPORT_CONFIG_RGD}" \
   "${IDENTITY_RGD}" "${AUTO_NETWORK_RGD}" "${DEDICATED_NETWORK_RGD}" \
   "${IMPORTED_NETWORK_RGD}" "${ISOLATED_NETWORK_RGD}" "${ROUTED_NETWORK_RGD}" \
-  "${SERVER_GROUP_RGD}" "${SECURITY_GROUP_RGD}" "${VOLUME_RGD}" \
+  "${KEYPAIR_RGD}" "${SERVER_GROUP_RGD}" "${SECURITY_GROUP_RGD}" "${VOLUME_RGD}" \
   "${SPOKE_RGD}" "${HELLO_RGD}"; do
   [[ $(yq -r '.apiVersion' "${rgd}") == kro.run/v1alpha1 ]] \
     || log::die "Invalid RGD apiVersion: ${rgd}"
@@ -213,7 +214,7 @@ done
    == projectID,compute,network,storage,loadBalancer,kubernetes ]] \
   || log::die "ImmutableSpokeConfig must expose separate service configuration groups"
 [[ $(yq -r '.spec.schema.spec.compute | keys | join(",")' "${CONFIG_RGD}") \
-   == imageID,sshKeyName,controlPlaneFlavor,generalWorkerFlavor,serverGroupPolicy ]] \
+   == imageID,sshPublicKey,controlPlaneFlavor,generalWorkerFlavor,serverGroupPolicy ]] \
   || log::die "Immutable compute config must contain one approved general worker flavor"
 [[ $(yq -r '.spec.schema.spec.kubernetes | keys | join(",")' "${CONFIG_RGD}") \
    == version,controlPlaneCount ]] \
@@ -272,6 +273,13 @@ done
    && $(yq -r '.spec.resources[] | select(.id == "servergroup") | .template.spec.resource.policy' "${SERVER_GROUP_RGD}") \
       == '${computeconfig.data.serverGroupPolicy}' ]] \
   || log::die "Server-group placement policy must come from immutable compute config"
+[[ $(yq -r '.spec.schema.spec | length' "${KEYPAIR_RGD}") == 0 \
+   && $(yq -r '.spec.resources[] | select(.id == "keypair") | .template.kind' "${KEYPAIR_RGD}") == KeyPair \
+   && $(yq -r '.spec.resources[] | select(.id == "keypair") | .template.spec.managementPolicy' "${KEYPAIR_RGD}") == managed \
+   && $(yq -r '.spec.resources[] | select(.id == "keypair") | .template.spec.managedOptions.onDelete' "${KEYPAIR_RGD}") == delete \
+   && $(yq -r '.spec.resources[] | select(.id == "keypair") | .template.spec.resource.publicKey' "${KEYPAIR_RGD}") == '${computeconfig.data.sshPublicKey}' \
+   && $(yq -r '.spec.resources[] | select(.id == "connection") | .template.immutable' "${KEYPAIR_RGD}") == true ]] \
+  || log::die "SpokeKeypair must create and delete an ORC keypair from immutable public-key config"
 [[ $(yq -r '.spec.schema.spec | keys | join(",")' "${VOLUME_RGD}") == sizeGB,description \
    && $(yq -r '.spec.resources[] | select(.id == "volume") | .template.spec.resource.volumeTypeRef' "${VOLUME_RGD}") \
       == '${volumetype.metadata.name}' ]] \
@@ -294,7 +302,7 @@ done
    && $(yq -r '.spec.schema.spec.kubernetes | keys | join(",")' "${SPOKE_RGD}") == minNodes,maxNodes ]] \
   || log::die "SpokeCluster must expose only mutable minNodes and maxNodes"
 for external_id in accountnamespace identity computeconfig networkserviceconfig storageconfig \
-  loadbalancerconfig kubernetesconfig clusterconfig networkconnection; do
+  loadbalancerconfig kubernetesconfig clusterconfig networkconnection keypairconnection; do
   yq -e ".spec.resources[] | select(.id == \"${external_id}\") | .externalRef" "${SPOKE_RGD}" >/dev/null \
     || log::die "SpokeCluster is missing external reference ${external_id}"
 done
@@ -312,6 +320,11 @@ done
 [[ $(yq -r '.spec.resources[] | select(.id == "workermachinetemplate") | .template.spec.template.spec.flavor' "${SPOKE_RGD}") \
    == '${computeconfig.data.generalWorkerFlavor}' ]] \
   || log::die "Workers must use the immutable approved general flavor"
+for template_id in controlplanemachinetemplate workermachinetemplate; do
+  [[ $(yq -r ".spec.resources[] | select(.id == \"${template_id}\") | .template.spec.template.spec.sshKeyName" "${SPOKE_RGD}") \
+     == '${keypairconnection.data.keypairName}' ]] \
+    || log::die "${template_id} must consume the ORC-managed keypair connection"
+done
 [[ $(yq -r '.spec.resources[] | select(.id == "cloudconfigresourceset") | .template.spec.resources[0].name' "${SPOKE_RGD}") \
    == '${identity.metadata.name + "-workload-cloud-config"}' ]] \
   || log::die "Workload credentials must be identity scoped"
@@ -357,11 +370,11 @@ mapfile -t hello_iac_files < <(
 [[ $(yq -r '.kind + ":" + .metadata.name' "${ACCOUNT_DIR}/identity.yaml") \
    == SpokeIdentity:test-poc ]] \
   || log::die "test-poc must use the SpokeIdentity API"
-for file in spoke-config.yaml network.yaml cluster.yaml hello-app.yaml; do
+for file in spoke-config.yaml network.yaml keypair.yaml cluster.yaml hello-app.yaml; do
   [[ $(yq -r '.metadata.namespace' "${ACCOUNT_DIR}/${file}") == spokeclusters-test-poc ]] \
     || log::die "${file} must be isolated in spokeclusters-test-poc"
 done
-for file in spoke-config.yaml network.yaml cluster.yaml hello-app.yaml; do
+for file in spoke-config.yaml network.yaml keypair.yaml cluster.yaml hello-app.yaml; do
   [[ $(yq -r '.metadata.name' "${ACCOUNT_DIR}/${file}") == poc-tenant-dev ]] \
     || log::die "${file} must compose the poc-tenant-dev graph"
 done
