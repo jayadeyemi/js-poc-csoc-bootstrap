@@ -140,9 +140,11 @@ for kind in ImmutableSpokeConfig SpokeIdentity; do
     "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml" >/dev/null \
     || log::die "Fleet project does not permit cluster-scoped ${kind}"
 done
-yq -e '.spec.namespaceResourceWhitelist[] | select(.group == "apps.csoc.js2.org" and .kind == "HelloApp")' \
-  "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml" >/dev/null \
-  || log::die "Fleet project does not permit HelloApp"
+for kind in HelloApp SpokeHelloApp SpokeGitOps; do
+  yq -e ".spec.namespaceResourceWhitelist[] | select(.group == \"apps.csoc.js2.org\" and .kind == \"${kind}\")" \
+    "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml" >/dev/null \
+    || log::die "Fleet project does not permit ${kind}"
+done
 yq -e '.spec.namespaceResourceWhitelist[] | select(.group == "apps.csoc.js2.org" and .kind == "HelloApp")' \
   "${REPO_ROOT}/argocd/projects/csoc-baseline.yaml" >/dev/null \
   || log::die "CSOC baseline project does not permit trusted HelloApp instances"
@@ -171,11 +173,13 @@ SECURITY_GROUP_RGD="${RGD_PACKAGE_ROOT}/security/spoke-security-group.rgd.yaml"
 VOLUME_RGD="${RGD_PACKAGE_ROOT}/storage/spoke-volume.rgd.yaml"
 SPOKE_RGD="${RGD_PACKAGE_ROOT}/cluster/v1/spoke-cluster.rgd.yaml"
 HELLO_RGD="${RGD_PACKAGE_ROOT}/workloads/hello-app.rgd.yaml"
+SPOKE_HELLO_RGD="${RGD_PACKAGE_ROOT}/workloads/spoke-hello-app.rgd.yaml"
+SPOKE_GITOPS_RGD="${RGD_PACKAGE_ROOT}/workloads/spoke-gitops.rgd.yaml"
 for rgd in "${CONFIG_RGD}" "${ENV_CONFIG_RGD}" "${IMPORT_CONFIG_RGD}" \
   "${IDENTITY_RGD}" "${AUTO_NETWORK_RGD}" "${DEDICATED_NETWORK_RGD}" \
   "${IMPORTED_NETWORK_RGD}" "${ISOLATED_NETWORK_RGD}" "${ROUTED_NETWORK_RGD}" \
   "${KEYPAIR_RGD}" "${SERVER_GROUP_RGD}" "${SECURITY_GROUP_RGD}" "${VOLUME_RGD}" \
-  "${SPOKE_RGD}" "${HELLO_RGD}"; do
+  "${SPOKE_RGD}" "${HELLO_RGD}" "${SPOKE_HELLO_RGD}" "${SPOKE_GITOPS_RGD}"; do
   [[ $(yq -r '.apiVersion' "${rgd}") == kro.run/v1alpha1 ]] \
     || log::die "Invalid RGD apiVersion: ${rgd}"
   if rg --line-number 'default\(' "${rgd}"; then
@@ -336,130 +340,52 @@ done
 [[ $(yq -r '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.managedSecurityGroups.allowAllInClusterTraffic' "${SPOKE_RGD}") == false ]] \
   || log::die "Spoke security groups must not allow all cluster traffic"
 
-log::step 5 "Validating the development account and unified Hello delivery"
-ACCOUNT_DIR="${FLEET_ROOT}/accounts/test-poc"
-EXAMPLE_ACCOUNT_DIR="${FLEET_ROOT}/examples/accounts/test-poc"
+log::step 5 "Validating inactive compositions and explicit workload ownership"
 CSOC_DIR="${FLEET_ROOT}/csoc"
-[[ -f "${FLEET_ROOT}/kustomization.yaml" && -f "${CSOC_DIR}/kustomization.yaml" ]] \
-  || log::die "Fleet root must expose its CSOC and account packages"
-[[ -f "${FLEET_ROOT}/accounts/kustomization.yaml" && -f "${ACCOUNT_DIR}/kustomization.yaml" \
-   && -f "${EXAMPLE_ACCOUNT_DIR}/kustomization.yaml" ]] \
-  || log::die "Fleet must provide active development and inactive example packages"
-[[ $(yq -r '.resources | join(",")' "${FLEET_ROOT}/accounts/kustomization.yaml") == test-poc ]] \
-  || log::die "Development fleet must activate only test-poc"
-while IFS= read -r active_manifest; do
-  relative_manifest=${active_manifest#"${FLEET_ROOT}/"}
-  git -C "${FLEET_ROOT}" ls-files --error-unmatch "${relative_manifest}" >/dev/null \
-    || log::die "Active GitOps manifest is not tracked: ${relative_manifest}"
-  if git -C "${FLEET_ROOT}" check-ignore -q "${relative_manifest}"; then
-    log::die "Active GitOps manifest is ignored: ${relative_manifest}"
-  fi
-done < <(find "${ACCOUNT_DIR}" -maxdepth 1 -type f \( -name '*.yaml' -o -name '*.yml' \) | sort)
-[[ $(yq -r '.kind + ":" + .metadata.name' "${CSOC_DIR}/hello-app.yaml") \
-   == HelloApp:csoc ]] \
-  || log::die "Fleet must contain the CSOC-local Hello instance"
-mapfile -t hello_iac_files < <(
-  {
-    find "${RGD_PACKAGE_ROOT}/workloads" -maxdepth 1 -type f -name '*hello*.yaml' -printf 'rgds/test-poc/workloads/%f\n'
-    find "${FLEET_ROOT}/csoc" -maxdepth 1 -type f -name '*hello*.yaml' -printf 'csoc/%f\n'
-  } | sort
-)
-[[ "${hello_iac_files[*]}" == \
-   "csoc/hello-app.yaml rgds/test-poc/workloads/hello-app.rgd.yaml" ]] \
-  || log::die "Expected exactly one active Hello RGD and one active CSOC instance"
-[[ $(yq -r '.kind + ":" + .metadata.name' "${ACCOUNT_DIR}/identity-config.yaml") \
-   == ImmutableSpokeConfig:test-poc ]] \
-  || log::die "The development account must include ImmutableSpokeConfig"
-[[ $(yq -r '.kind + ":" + .metadata.name' "${ACCOUNT_DIR}/identity.yaml") \
-   == SpokeIdentity:test-poc ]] \
-  || log::die "test-poc must use the SpokeIdentity API"
-for file in spoke-config.yaml network.yaml keypair.yaml cluster.yaml hello-app.yaml; do
-  [[ $(yq -r '.metadata.namespace' "${ACCOUNT_DIR}/${file}") == spokeclusters-test-poc ]] \
-    || log::die "${file} must be isolated in spokeclusters-test-poc"
+EXAMPLES_DIR="${FLEET_ROOT}/examples"
+[[ -f "${FLEET_ROOT}/kustomization.yaml" && -f "${CSOC_DIR}/kustomization.yaml" \
+   && -f "${EXAMPLES_DIR}/README.md" ]] \
+  || log::die "Fleet root must expose CSOC resources and documented examples"
+[[ $(yq -r '.resources | length' "${FLEET_ROOT}/accounts/kustomization.yaml") == 0 ]] \
+  || log::die "Retired development fleet must not leave an active spoke account"
+[[ -f "${EXAMPLES_DIR}/retired/poc-tenant-dev/kustomization.yaml" ]] \
+  || log::die "Retired poc-tenant-dev composition must remain documented"
+(( $(find "${EXAMPLES_DIR}/compositions" -mindepth 1 -maxdepth 1 -type d | wc -l) >= 5 )) \
+  || log::die "Fleet must include multiple complete composition examples"
+while IFS= read -r kustomization; do
+  [[ -f "$(dirname "${kustomization}")/README.md" ]] \
+    || log::die "Example package lacks README: ${kustomization}"
+done < <(find "${EXAMPLES_DIR}/compositions" "${EXAMPLES_DIR}/connections" -name kustomization.yaml | sort)
+[[ $(yq -r '.kind + ":" + .metadata.name' "${CSOC_DIR}/hello-app.yaml") == HelloApp:csoc \
+   && $(yq -r '.spec | keys | join(",")' "${CSOC_DIR}/hello-app.yaml") == target,replicas \
+   && $(yq -r '.spec.target' "${CSOC_DIR}/hello-app.yaml") == csoc ]] \
+  || log::die "CSOC Hello instance must use the direct-only API"
+[[ $(yq -r '.spec.resources[] | select(.id == "service") | .template.metadata.annotations."service.beta.kubernetes.io/openstack-internal-load-balancer"' "${HELLO_RGD}") == true ]] \
+  || log::die "CSOC Hello load balancer must remain internal"
+yq -e '.spec.resources[] | select(.id == "resourceset") | .template.kind == "ClusterResourceSet"' \
+  "${SPOKE_HELLO_RGD}" >/dev/null || log::die "SpokeHelloApp must use CAPI ClusterResourceSet"
+HELLO_SPOKE_PAYLOAD=$(yq -r '.spec.resources[] | select(.id == "workload") | .template.data."hello-app.yaml"' "${SPOKE_HELLO_RGD}")
+for expected_hello_setting in \
+  'loadbalancer.openstack.org/floating-network-id: ${networkconnection.data.externalNetworkID}' \
+  'loadBalancerSourceRanges:' '- ${schema.spec.applicationAllowedCIDR}'; do
+  rg -Fq -- "${expected_hello_setting}" <<<"${HELLO_SPOKE_PAYLOAD}" \
+    || log::die "SpokeHelloApp is missing: ${expected_hello_setting}"
 done
-for file in spoke-config.yaml network.yaml keypair.yaml cluster.yaml hello-app.yaml; do
-  [[ $(yq -r '.metadata.name' "${ACCOUNT_DIR}/${file}") == poc-tenant-dev ]] \
-    || log::die "${file} must compose the poc-tenant-dev graph"
-done
-min_nodes=$(yq -er '.spec.kubernetes.minNodes' "${ACCOUNT_DIR}/cluster.yaml")
-max_nodes=$(yq -er '.spec.kubernetes.maxNodes' "${ACCOUNT_DIR}/cluster.yaml")
-(( min_nodes >= 1 && min_nodes <= max_nodes && max_nodes <= 4 )) \
-  || log::die "Invalid test-poc worker bounds"
-[[ "${min_nodes}:${max_nodes}" == 1:2 ]] \
-  || log::die "Development test-poc must use 1..2 worker bounds"
-[[ $(yq -r '.spec.compute.controlPlaneFlavor + ":" + .spec.compute.generalWorkerFlavor' \
-     "${ACCOUNT_DIR}/identity-config.yaml") == m3.small:m3.quad ]] \
-  || log::die "Development test-poc must use m3.small control plane and m3.quad workers"
-[[ $(yq -r '.spec.network.apiServerAllowedCIDR' "${ACCOUNT_DIR}/identity-config.yaml") \
-   == 149.165.155.5/32 ]] \
-  || log::die "Development spoke API must be restricted to the reviewed CSOC router SNAT address"
-[[ $(yq -r '.spec.applicationAllowedCIDR' "${ACCOUNT_DIR}/hello-app.yaml") \
-   == 129.79.197.56/32 ]] \
-  || log::die "Development application access must be restricted to the reviewed local-host egress address"
-[[ $(yq -r '.spec.network | has("applicationAllowedCIDR")' "${ACCOUNT_DIR}/identity-config.yaml") == false ]] \
-  || log::die "Mutable application access must not be stored in ImmutableSpokeConfig"
-[[ ! -e "${ACCOUNT_DIR}/network-dedicated.yaml" ]] \
-  || log::die "Active accounts must expose the selected graph only as network.yaml"
-[[ $(yq -r '.spec.kubernetes | keys | join(",")' "${ACCOUNT_DIR}/identity-config.yaml") \
-   == version,controlPlaneCount ]] \
-  || log::die "test-poc immutable config must not contain scale bounds or unsupported worker classes"
-[[ $(yq -r '.spec | keys | join(",")' "${ACCOUNT_DIR}/cluster.yaml") == kubernetes \
-   && $(yq -r '.spec.kubernetes | keys | join(",")' "${ACCOUNT_DIR}/cluster.yaml") == minNodes,maxNodes ]] \
-  || log::die "test-poc SpokeCluster must contain only mutable worker bounds"
-node_cidr=$(yq -er '.spec.nodeCIDR' "${ACCOUNT_DIR}/spoke-config.yaml")
-[[ ${node_cidr} =~ ^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.) ]] \
-  || log::die "Dedicated network CIDR is not RFC1918"
+[[ $(yq -r '.spec.resources[] | select(.id == "argocd") | .template.kind' "${SPOKE_GITOPS_RGD}") == HelmChartProxy \
+   && $(yq -r '.spec.resources[] | select(.id == "argocd") | .template.spec.version' "${SPOKE_GITOPS_RGD}") == "${ARGOCD_CHART_VERSION}" ]] \
+  || log::die "SpokeGitOps must install the pinned Argo CD chart through CAPI addons"
+rg -Fq 'repoURL: ${schema.spec.repositoryURL}' "${SPOKE_GITOPS_RGD}" \
+  || log::die "SpokeGitOps root Application must use the declared repository"
+while IFS= read -r rgd; do
+  [[ -f "${rgd%.yaml}.md" ]] || log::die "RGD lacks paired documentation: ${rgd}"
+done < <(find "${RGD_PACKAGE_ROOT}" -type f -name '*.rgd.yaml' | sort)
 if rg --line-number '(secret(Name|Ref)|applicationCredential|credentialSecret):' \
     "${FLEET_ROOT}/accounts" "${FLEET_ROOT}/examples"; then
   log::die "Fleet instances must not name or embed credentials"
 fi
-if rg --line-number 'SpokeCluster|cluster\.x-k8s\.io|infrastructure\.cluster\.x-k8s\.io' \
-    "${REPO_ROOT}/scripts/bootstrap/magnum" "${REPO_ROOT}/scripts/operations/magnum"; then
-  log::die "Magnum lifecycle must manage only the CSOC management cluster"
-fi
-rg -Fq '<body><h1>Hello ${schema.metadata.name}.</h1></body>' "${HELLO_RGD}" \
-  || log::die "HelloApp must render the selected spoke name"
-rg -q 'replicas: \$\{string\(schema\.spec\.replicas\)\}' "${HELLO_RGD}" \
-  || log::die "HelloApp must stringify replicas inside its manifest payload"
-rg -q 'type: LoadBalancer' "${HELLO_RGD}" \
-  || log::die "Spoke HelloApp must create its own application load balancer"
-[[ $(yq -r '.spec.schema.scope' "${HELLO_RGD}") == Namespaced ]] \
-  || log::die "HelloApp must be an account-scoped workload graph"
-[[ $(yq -r '.spec.schema.spec.target' "${HELLO_RGD}") == 'string | default="spoke" enum="csoc,spoke"' ]] \
-  || log::die "HelloApp must explicitly select CSOC or spoke delivery"
-yq -e '.spec.resources[] | select(.id == "resourceset") | .template.kind == "ClusterResourceSet"' \
-  "${HELLO_RGD}" >/dev/null || log::die "HelloApp must deploy through CAPI ClusterResourceSet"
-[[ $(yq -r '.spec.resources[] | select(.id == "csochtml") | .template.data."index.html"' "${HELLO_RGD}" \
-    | rg -o 'Hello CSOC\.') == "Hello CSOC." ]] \
-  || log::die "CSOC Hello message is incorrect"
-[[ $(yq -r '.spec.resources[] | select(.id == "csocservice") | .template.spec.type' "${HELLO_RGD}") \
-   == LoadBalancer ]] \
-  || log::die "CSOC Hello must create its own application load balancer"
-[[ $(yq -r '.spec.resources[] | select(.id == "csocservice") | .template.metadata.annotations."service.beta.kubernetes.io/openstack-internal-load-balancer"' "${HELLO_RGD}") \
-   == true ]] \
-  || log::die "CSOC Hello load balancer must remain internal"
-HELLO_SPOKE_PAYLOAD=$(yq -r '.spec.resources[] | select(.id == "workload") | .template.data."hello-app.yaml"' "${HELLO_RGD}")
-for expected_hello_setting in \
-  'service.beta.kubernetes.io/openstack-internal-load-balancer: "false"' \
-  'loadbalancer.openstack.org/floating-network-id: ${spokenetworkconnection.data.externalNetworkID}' \
-  'loadbalancer.openstack.org/subnet-id: ${spokenetworkconnection.data.subnetID}' \
-  'loadBalancerSourceRanges:' \
-  '- ${schema.spec.applicationAllowedCIDR}'; do
-  rg -Fq -- "${expected_hello_setting}" <<<"${HELLO_SPOKE_PAYLOAD}" \
-    || log::die "Spoke Hello public load balancer is missing: ${expected_hello_setting}"
-done
-for external_id in spokenetworkconnection; do
-  yq -e ".spec.resources[] | select(.id == \"${external_id}\") | .externalRef" "${HELLO_RGD}" >/dev/null \
-    || log::die "Spoke Hello is missing restricted external reference ${external_id}"
-done
-for obsolete_external_id in spokeaccountnamespace spokeidentity spokenetworkconfig; do
-  if yq -e ".spec.resources[] | select(.id == \"${obsolete_external_id}\")" "${HELLO_RGD}" >/dev/null 2>&1; then
-    log::die "Spoke Hello retains unused external reference ${obsolete_external_id}"
-  fi
-done
 if rg --line-number 'loadBalancerIP|0\.0\.0\.0/0' \
-    "${RGD_PACKAGE_ROOT}/workloads" "${FLEET_ROOT}/csoc" "${ACCOUNT_DIR}/hello-app.yaml"; then
-  log::die "Hello workloads must not request a public or unrestricted address"
+    "${RGD_PACKAGE_ROOT}/workloads" "${FLEET_ROOT}/csoc" "${EXAMPLES_DIR}"; then
+  log::die "Hello workloads must not request an unrestricted address"
 fi
 
 log::step 6 "Rendering Kustomize and Helm packages"
