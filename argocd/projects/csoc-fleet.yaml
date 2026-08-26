@@ -54,3 +54,7 @@ spec:
       kind: SpokeVolume
     - group: apps.csoc.js2.org
       kind: HelloApp
+    - group: apps.csoc.js2.org
+      kind: SpokeHelloApp
+    - group: apps.csoc.js2.org
+      kind: SpokeGitOps

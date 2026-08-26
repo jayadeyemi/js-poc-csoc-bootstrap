@@ -5,6 +5,14 @@ template visible to the authenticated OpenStack project. Each snapshot contains
 an `index.json` plus the complete `openstack coe cluster template show` result
 for every template UUID.
 
+This is not a Glance image inventory. Magnum templates may expose `image_id` as
+an image name, while CAPO machine templates normally pin the resolved Glance
+UUID directly. Reviewed UUID `18895dd1-6e94-482b-9a62-9573328c7429` is the
+public ACTIVE image `ubuntu-jammy-kube-v1.34.8-260518-1604`; the Kubernetes 1.34
+Magnum template snapshot records that name. A public image UUID is a normal
+CAPO input, but its visibility, status, Kubernetes compatibility, and provider
+provenance must be checked before it enters `ImmutableSpokeConfig`.
+
 Refresh the inventory from the management container with:
 
 ```bash

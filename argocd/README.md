@@ -43,8 +43,11 @@ projects/
 
 There is deliberately no `csoc-baseline` Application or ApplicationSet. The
 project is the authorization boundary for trusted workload instances; the
-single fleet Application currently owns the CSOC and opt-in spoke `HelloApp`
-instances.
+single fleet Application owns the CSOC-local `HelloApp` plus any opt-in
+`SpokeHelloApp` or `SpokeGitOps` instances. `SpokeHelloApp` delivers resources
+from the CSOC through CAPI; `SpokeGitOps` installs a separate Argo CD in the
+spoke and points its root Application at a public repository. A workload must
+choose exactly one ownership path.
 
 `prune: false` is set on all Applications. Removing a spoke from Git therefore
 makes it an orphan warning without deleting it. After the fleet default branch
