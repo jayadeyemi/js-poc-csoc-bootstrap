@@ -222,9 +222,9 @@ done
 [[ $(yq -r '.spec.resources[] | select(.id == "kubernetesconfig") | .template.data | keys | join(",")' "${CONFIG_RGD}") \
    == version,controlPlaneCount ]] \
   || log::die "Generated Kubernetes ConfigMap contains mutable bounds or unsupported worker classes"
-[[ $(yq -r '.spec.resources[] | select(.id == "networkserviceconfig") | .template.data.applicationAllowedCIDR' "${CONFIG_RGD}") \
-   == '${schema.spec.network.applicationAllowedCIDR}' ]] \
-  || log::die "Application access CIDR must be copied into immutable network configuration"
+[[ $(yq -r '.spec.schema.spec.network | has("applicationAllowedCIDR")' "${CONFIG_RGD}") == false \
+   && $(yq -r '.spec.resources[] | select(.id == "networkserviceconfig") | .template.data | has("applicationAllowedCIDR")' "${CONFIG_RGD}") == false ]] \
+  || log::die "Mutable application access policy must not enter immutable network configuration"
 [[ $(yq -r '.spec.schema.spec | keys | join(",")' "${ENV_CONFIG_RGD}") \
    == environment,nodeCIDR,podCIDR,serviceCIDR,networkMTU,enableDHCP,portSecurityEnabled ]] \
   || log::die "SpokeEnvironmentConfig must not expose a worker class"
@@ -393,9 +393,11 @@ max_nodes=$(yq -er '.spec.kubernetes.maxNodes' "${ACCOUNT_DIR}/cluster.yaml")
 [[ $(yq -r '.spec.network.apiServerAllowedCIDR' "${ACCOUNT_DIR}/identity-config.yaml") \
    == 149.165.155.5/32 ]] \
   || log::die "Development spoke API must be restricted to the reviewed CSOC router SNAT address"
-[[ $(yq -r '.spec.network.applicationAllowedCIDR' "${ACCOUNT_DIR}/identity-config.yaml") \
-   == 129.79.197.76/32 ]] \
+[[ $(yq -r '.spec.applicationAllowedCIDR' "${ACCOUNT_DIR}/hello-app.yaml") \
+   == 129.79.197.56/32 ]] \
   || log::die "Development application access must be restricted to the reviewed local-host egress address"
+[[ $(yq -r '.spec.network | has("applicationAllowedCIDR")' "${ACCOUNT_DIR}/identity-config.yaml") == false ]] \
+  || log::die "Mutable application access must not be stored in ImmutableSpokeConfig"
 [[ ! -e "${ACCOUNT_DIR}/network-dedicated.yaml" ]] \
   || log::die "Active accounts must expose the selected graph only as network.yaml"
 [[ $(yq -r '.spec.kubernetes | keys | join(",")' "${ACCOUNT_DIR}/identity-config.yaml") \
@@ -442,13 +444,18 @@ for expected_hello_setting in \
   'loadbalancer.openstack.org/floating-network-id: ${spokenetworkconnection.data.externalNetworkID}' \
   'loadbalancer.openstack.org/subnet-id: ${spokenetworkconnection.data.subnetID}' \
   'loadBalancerSourceRanges:' \
-  '- ${spokenetworkconfig.data.applicationAllowedCIDR}'; do
+  '- ${schema.spec.applicationAllowedCIDR}'; do
   rg -Fq -- "${expected_hello_setting}" <<<"${HELLO_SPOKE_PAYLOAD}" \
     || log::die "Spoke Hello public load balancer is missing: ${expected_hello_setting}"
 done
-for external_id in spokeaccountnamespace spokeidentity spokenetworkconfig spokenetworkconnection; do
+for external_id in spokenetworkconnection; do
   yq -e ".spec.resources[] | select(.id == \"${external_id}\") | .externalRef" "${HELLO_RGD}" >/dev/null \
     || log::die "Spoke Hello is missing restricted external reference ${external_id}"
+done
+for obsolete_external_id in spokeaccountnamespace spokeidentity spokenetworkconfig; do
+  if yq -e ".spec.resources[] | select(.id == \"${obsolete_external_id}\")" "${HELLO_RGD}" >/dev/null 2>&1; then
+    log::die "Spoke Hello retains unused external reference ${obsolete_external_id}"
+  fi
 done
 if rg --line-number 'loadBalancerIP|0\.0\.0\.0/0' \
     "${RGD_PACKAGE_ROOT}/workloads" "${FLEET_ROOT}/csoc" "${ACCOUNT_DIR}/hello-app.yaml"; then

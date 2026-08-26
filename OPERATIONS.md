@@ -81,10 +81,12 @@ cluster registration or ApplicationSet path is used.
 
 CSOC Hello uses a dedicated internal OpenStack load balancer. Spoke Hello uses
 its own external Octavia load balancer on the graph-produced private subnet,
-with `loadBalancerSourceRanges` restricted to the immutable local-operator
-`/32`. Neither reuses the Magnum/CAPO Kubernetes API load balancers. Confirm
-the Service range and Octavia security-group rule match before testing from
-the approved host; `0.0.0.0/0` is not acceptable.
+with `loadBalancerSourceRanges` restricted to the mutable local-operator `/32`
+declared on its `HelloApp` instance. Update that field when operator egress
+changes; do not recreate immutable account configuration for an access-policy
+change. Neither service reuses the Magnum/CAPO Kubernetes API load balancers.
+Confirm the Service range and Octavia listener `allowed_cidrs` match before
+testing from the approved host; `0.0.0.0/0` is not acceptable.
 
 ## Controller recovery
 
