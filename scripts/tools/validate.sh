@@ -226,6 +226,12 @@ done
 [[ $(yq -r '.spec.resources[] | select(.id == "openstackidentity") | .template.spec.namespaceSelector.matchLabels."csoc.js2.org/identity"' "${IDENTITY_RGD}") \
    == '${schema.metadata.name}' ]] \
   || log::die "CAPO identity selector must isolate one account"
+for secret_id in cloudconfigsecret workloadcloudconfigsecret; do
+  [[ $(yq -r ".spec.resources[] | select(.id == \"${secret_id}\") | .externalRef.kind" "${IDENTITY_RGD}") == Secret ]] \
+    || log::die "SpokeIdentity must require runtime credential Secret ${secret_id}"
+done
+rg -Fq 'cloudconfigsecret.metadata.name != "" && workloadcloudconfigsecret.metadata.name != ""' "${IDENTITY_RGD}" \
+  || log::die "SpokeIdentity readiness must include both credential Secrets"
 for config_id in accountconfig computeconfig networkserviceconfig storageconfig \
   loadbalancerconfig kubernetesconfig; do
   [[ $(yq -r ".spec.resources[] | select(.id == \"${config_id}\") | .template.immutable" "${IDENTITY_RGD}") == true ]] \
@@ -352,10 +358,16 @@ for template_id in controlplanemachinetemplate workermachinetemplate; do
   [[ $(yq -r ".spec.resources[] | select(.id == \"${template_id}\") | .template.spec.template.spec.sshKeyName" "${SPOKE_RGD}") \
      == '${keypairconnection.data.keypairName}' ]] \
     || log::die "${template_id} must consume the ORC-managed keypair connection"
+  [[ $(yq -r ".spec.resources[] | select(.id == \"${template_id}\") | .template.spec.template.spec.rootVolume.sizeGiB" "${SPOKE_RGD}") == 20 \
+     && $(yq -r ".spec.resources[] | select(.id == \"${template_id}\") | .template.spec.template.spec.rootVolume.type" "${SPOKE_RGD}") == '${storageconfig.data.volumeType}' \
+     && $(yq -r ".spec.resources[] | select(.id == \"${template_id}\") | .template.spec.template.spec.rootVolume.availabilityZone.name" "${SPOKE_RGD}") == '${storageconfig.data.availabilityZone}' ]] \
+    || log::die "${template_id} must use an immutable 20-GiB Cinder root volume"
 done
 [[ $(yq -r '.spec.resources[] | select(.id == "cloudconfigresourceset") | .template.spec.resources[0].name' "${SPOKE_RGD}") \
    == '${identity.metadata.name + "-workload-cloud-config"}' ]] \
   || log::die "Workload credentials must be identity scoped"
+rg -Fq 'cloudconfigresourceset.?status.?conditions' "${SPOKE_RGD}" \
+  || log::die "SpokeCluster readiness must include workload cloud-config delivery"
 [[ $(yq -r '.spec.resources[] | select(.id == "machinedeployment") | .template.spec.replicas // ""' "${SPOKE_RGD}") == "" ]] \
   || log::die "MachineDeployment replicas must remain under autoscaler ownership"
 [[ $(yq -r '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.managedSecurityGroups.allowAllInClusterTraffic' "${SPOKE_RGD}") == false ]] \
@@ -405,6 +417,11 @@ while IFS='|' read -r account app environment owner path; do
        && $(yq -r '.spec.clusterName' "${FLEET_ROOT}/${path}/application.yaml") == "${canonical_name}" \
        && $(yq -r '.spec.argoCDName' "${FLEET_ROOT}/${path}/application.yaml") == "${canonical_name}" ]] \
       || log::die "Fleet tuple ${key} lacks a complete modular spoke-local Argo owner"
+    expected_application_path="argo/accounts/${owner}/accounts/${account}/${app}/${environment}"
+    [[ $(yq -r '.spec.repositoryURL' "${FLEET_ROOT}/${path}/application.yaml") == https://github.com/jayadeyemi/gitops.git \
+       && $(yq -r '.spec.targetRevision' "${FLEET_ROOT}/${path}/application.yaml") =~ ^[0-9a-f]{40}$ \
+       && $(yq -r '.spec.path' "${FLEET_ROOT}/${path}/application.yaml") == "${expected_application_path}" ]] \
+      || log::die "Fleet tuple ${key} must pin its ordered GitOps application path"
   fi
 done < <(yq -r '.assignments[] | [.account,.app,.environment,.owner,.path] | join("|")' \
   "${FLEET_ROOT}/ownership.yaml")
@@ -412,6 +429,10 @@ done < <(yq -r '.assignments[] | [.account,.app,.environment,.owner,.path] | joi
   || log::die "test-poc/hello-app/dev must be staging-owned"
 [[ "${ownership_keys[training-account/jupyterhub/dev]:-}" == staging ]] \
   || log::die "training-account/jupyterhub/dev must be staging-owned"
+[[ "${ownership_keys[training-account/registry-cache/dev]:-}" == staging ]] \
+  || log::die "training-account/registry-cache/dev must be staging-owned"
+[[ "${ownership_keys[training-account/monitoring/dev]:-}" == staging ]] \
+  || log::die "training-account/monitoring/dev must be staging-owned"
 [[ -f "${EXAMPLES_DIR}/retired/poc-tenant-dev/kustomization.yaml" ]] \
   || log::die "Retired poc-tenant-dev composition must remain documented"
 (( $(find "${EXAMPLES_DIR}/compositions" -mindepth 1 -maxdepth 1 -type d | wc -l) >= 5 )) \
@@ -442,11 +463,6 @@ rg -Fq 'repoURL: ${schema.spec.repositoryURL}' "${SPOKE_GITOPS_RGD}" \
 [[ $(yq -r '.spec.schema.spec.targetRevision' "${SPOKE_ARGO_APPLICATION_RGD}") == *'^[0-9a-f]{40}$'* \
    && $(yq -r '.spec.resources[] | select(.id == "resourceset") | .template.spec.strategy' "${SPOKE_ARGO_APPLICATION_RGD}") == Reconcile ]] \
   || log::die "SpokeArgoApplication must require an immutable revision and reconcile continuously"
-TRAINING_APPLICATION="${FLEET_ROOT}/accounts/staging/accounts/training-account/jupyterhub/dev/application.yaml"
-[[ $(yq -r '.spec.repositoryURL' "${TRAINING_APPLICATION}") == https://github.com/jayadeyemi/gitops.git \
-   && $(yq -r '.spec.targetRevision' "${TRAINING_APPLICATION}") =~ ^[0-9a-f]{40}$ \
-   && $(yq -r '.spec.path' "${TRAINING_APPLICATION}") == argo/clusters/training-account/dev ]] \
-  || log::die "Training account Application must pin the reviewed GitOps fork bundle"
 while IFS= read -r rgd; do
   [[ -f "${rgd%.yaml}.md" ]] || log::die "RGD lacks paired documentation: ${rgd}"
 done < <(find "${RGD_PACKAGE_ROOT}" -type f -name '*.rgd.yaml' | sort)
