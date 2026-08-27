@@ -17,7 +17,7 @@ export CSOC_PROFILE = $(PROFILE)
 	magnum-templates magnum-provision magnum-wait magnum-kubeconfig \
 	magnum-configure-nodegroup magnum-diagnose magnum-verify magnum-verify-autoscaling \
 	csoc-plan csoc-resize clusters-verify clusters-verify-all \
-	capi-secret \
+	credential-create capi-secret \
 	argocd-install argocd-manual-smoke argocd-bootstrap argocd-status \
 	destroy-spoke \
 	bootstrap
@@ -105,6 +105,12 @@ clusters-verify-all: ## Run live validation in a container for every provisioned
 	bash scripts/host/verify-all-clusters.sh
 
 # ── CAPI ──────────────────────────────────────────────────────────────────────
+credential-create: ## Create an expiring app credential (SOURCE/OUTPUT/NAME/POLICY/EXPIRES_AT)
+	SOURCE_CLOUDS="$${SOURCE}" OUTPUT_CLOUDS="$${OUTPUT}" \
+	CREDENTIAL_NAME="$${NAME}" CREDENTIAL_POLICY="$${POLICY:-restricted}" \
+	CREDENTIAL_EXPIRES_AT="$${EXPIRES_AT}" \
+	bash scripts/host/create-application-credential.sh
+
 capi-secret: ## Load/update restricted CAPO/ORC and workload secrets (IDENTITY=test-poc)
 	bash scripts/bootstrap/credentials/create-runtime-cloud-secret.sh $${IDENTITY:-test-poc}
 
