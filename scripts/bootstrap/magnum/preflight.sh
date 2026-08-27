@@ -92,6 +92,18 @@ IMAGE_JSON=$(openstack image show "${IMAGE_NAME}" -f json) \
 [[ $(jq -r '.id' <<<"${IMAGE_JSON}") == "${MAGNUM_IMAGE_ID}" \
    && $(jq -r '.name' <<<"${IMAGE_JSON}") == "${MAGNUM_IMAGE_NAME}" ]] \
   || log::die "Template no longer resolves to expected image ${MAGNUM_IMAGE_NAME} (${MAGNUM_IMAGE_ID})"
+IMAGE_MIN_DISK_GIB=$(jq -er '(.min_disk // 0) | tonumber' <<<"${IMAGE_JSON}") \
+  || log::die "Template image min_disk is not numeric"
+IMAGE_VIRTUAL_SIZE_BYTES=$(jq -er '(.virtual_size // .size // 0) | tonumber' <<<"${IMAGE_JSON}") \
+  || log::die "Template image size is not numeric"
+IMAGE_VIRTUAL_SIZE_GIB=$(( (IMAGE_VIRTUAL_SIZE_BYTES + 1073741823) / 1073741824 ))
+IMAGE_REQUIRED_DISK_GIB=${IMAGE_MIN_DISK_GIB}
+(( IMAGE_VIRTUAL_SIZE_GIB > IMAGE_REQUIRED_DISK_GIB )) \
+  && IMAGE_REQUIRED_DISK_GIB=${IMAGE_VIRTUAL_SIZE_GIB}
+[[ "${MAGNUM_BOOT_VOLUME_SIZE}" =~ ^[1-9][0-9]*$ ]] \
+  || log::die "Boot volume size must be a positive integer GiB value"
+(( MAGNUM_BOOT_VOLUME_SIZE >= IMAGE_REQUIRED_DISK_GIB )) \
+  || log::die "Boot volume ${MAGNUM_BOOT_VOLUME_SIZE} GiB is smaller than image floor ${IMAGE_REQUIRED_DISK_GIB} GiB"
 
 log::step 3 "Validating network, flavors, keypair, and load balancer service"
 [[ "${MAGNUM_FLOATING_IP_ENABLED}" == true && "${MAGNUM_MASTER_LB_ENABLED}" == true ]] \
@@ -208,6 +220,7 @@ fi
 log::success "Preflight passed for project ${PROJECT_ID}"
 log::info "  template : ${MAGNUM_TEMPLATE_NAME} (${MAGNUM_TEMPLATE_ID})"
 log::info "  image    : ${IMAGE_NAME}"
+log::info "  root disk: ${MAGNUM_BOOT_VOLUME_SIZE} GiB (image floor ${IMAGE_REQUIRED_DISK_GIB} GiB)"
 log::info "  keypair  : ${MAGNUM_KEYPAIR}"
 log::info "  cluster  : ${MAGNUM_CLUSTER_NAME}"
 log::info "  profile  : ${CSOC_PROFILE} (${MAGNUM_MASTER_COUNT} x ${MAGNUM_MASTER_FLAVOR} control plane)"
