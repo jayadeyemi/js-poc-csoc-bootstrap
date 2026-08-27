@@ -15,6 +15,10 @@ STATE_DIR=$(dirname "${STATE_FILE}")
 KUBECONFIG_DIR="${MAGNUM_KUBECONFIG_DIR:-${HOME}/.kube}"
 MAGNUM_CREDENTIAL_FILE=$(credentials::magnum_file)
 RUNTIME_CREDENTIAL_FILE=$(credentials::runtime_file)
+VALIDATE_RUNTIME_CREDENTIAL=false
+if [[ "${CSOC_FLEET_ENABLED}" == true || -f "${RUNTIME_CREDENTIAL_FILE}" ]]; then
+  VALIDATE_RUNTIME_CREDENTIAL=true
+fi
 
 for required_command in git openstack jq; do
   command -v "${required_command}" >/dev/null 2>&1 \
@@ -41,24 +45,28 @@ fi
 
 log::step 1 "Checking separated OpenStack credentials and local state paths"
 credentials::require_private_file "${MAGNUM_CREDENTIAL_FILE}" Magnum
-credentials::require_private_file "${RUNTIME_CREDENTIAL_FILE}" Runtime
 MAGNUM_CREDENTIAL_JSON=$(credentials::metadata "${MAGNUM_CREDENTIAL_FILE}" "${OS_CLOUD}")
-RUNTIME_CREDENTIAL_JSON=$(credentials::metadata "${RUNTIME_CREDENTIAL_FILE}" "${OS_CLOUD}")
 credentials::require_unexpired "${MAGNUM_CREDENTIAL_JSON}" Magnum
-credentials::require_unexpired "${RUNTIME_CREDENTIAL_JSON}" Runtime
 [[ $(jq -r '.project_id' <<<"${MAGNUM_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" \
    && $(jq -r '.app_project_id' <<<"${MAGNUM_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" ]] \
   || log::die "Magnum credential is not scoped to expected project ${MAGNUM_PROJECT_ID}"
-[[ $(jq -r '.project_id' <<<"${RUNTIME_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" \
-   && $(jq -r '.app_project_id' <<<"${RUNTIME_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" ]] \
-  || log::die "Runtime credential is not scoped to expected project ${MAGNUM_PROJECT_ID}"
 [[ $(jq -r '.unrestricted' <<<"${MAGNUM_CREDENTIAL_JSON}") == true ]] \
   || log::die "Magnum application credential must be unrestricted for trustee/trust creation"
-[[ $(jq -r '.unrestricted' <<<"${RUNTIME_CREDENTIAL_JSON}") == false ]] \
-  || log::die "Runtime CAPO/workload application credential must be restricted"
-[[ $(jq -r '.id' <<<"${MAGNUM_CREDENTIAL_JSON}") != \
-   $(jq -r '.id' <<<"${RUNTIME_CREDENTIAL_JSON}") ]] \
-  || log::die "Magnum and runtime credentials must be distinct"
+if [[ "${VALIDATE_RUNTIME_CREDENTIAL}" == true ]]; then
+  credentials::require_private_file "${RUNTIME_CREDENTIAL_FILE}" Runtime
+  RUNTIME_CREDENTIAL_JSON=$(credentials::metadata "${RUNTIME_CREDENTIAL_FILE}" "${OS_CLOUD}")
+  credentials::require_unexpired "${RUNTIME_CREDENTIAL_JSON}" Runtime
+  [[ $(jq -r '.project_id' <<<"${RUNTIME_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" \
+     && $(jq -r '.app_project_id' <<<"${RUNTIME_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" ]] \
+    || log::die "Runtime credential is not scoped to expected project ${MAGNUM_PROJECT_ID}"
+  [[ $(jq -r '.unrestricted' <<<"${RUNTIME_CREDENTIAL_JSON}") == false ]] \
+    || log::die "Runtime CAPO/workload application credential must be restricted"
+  [[ $(jq -r '.id' <<<"${MAGNUM_CREDENTIAL_JSON}") != \
+     $(jq -r '.id' <<<"${RUNTIME_CREDENTIAL_JSON}") ]] \
+    || log::die "Magnum and runtime credentials must be distinct"
+else
+  log::info "${CSOC_PROFILE} has no fleet; no runtime credential is required"
+fi
 mkdir -p "${STATE_DIR}" "${KUBECONFIG_DIR}"
 chmod 700 "${STATE_DIR}" "${KUBECONFIG_DIR}"
 [[ -w "${STATE_DIR}" && -w "${KUBECONFIG_DIR}" ]] \
@@ -92,6 +100,18 @@ IMAGE_JSON=$(openstack image show "${IMAGE_NAME}" -f json) \
 [[ $(jq -r '.id' <<<"${IMAGE_JSON}") == "${MAGNUM_IMAGE_ID}" \
    && $(jq -r '.name' <<<"${IMAGE_JSON}") == "${MAGNUM_IMAGE_NAME}" ]] \
   || log::die "Template no longer resolves to expected image ${MAGNUM_IMAGE_NAME} (${MAGNUM_IMAGE_ID})"
+IMAGE_MIN_DISK_GIB=$(jq -er '(.min_disk // 0) | tonumber' <<<"${IMAGE_JSON}") \
+  || log::die "Template image min_disk is not numeric"
+IMAGE_VIRTUAL_SIZE_BYTES=$(jq -er '(.virtual_size // .size // 0) | tonumber' <<<"${IMAGE_JSON}") \
+  || log::die "Template image size is not numeric"
+IMAGE_VIRTUAL_SIZE_GIB=$(( (IMAGE_VIRTUAL_SIZE_BYTES + 1073741823) / 1073741824 ))
+IMAGE_REQUIRED_DISK_GIB=${IMAGE_MIN_DISK_GIB}
+(( IMAGE_VIRTUAL_SIZE_GIB > IMAGE_REQUIRED_DISK_GIB )) \
+  && IMAGE_REQUIRED_DISK_GIB=${IMAGE_VIRTUAL_SIZE_GIB}
+[[ "${MAGNUM_BOOT_VOLUME_SIZE}" =~ ^[1-9][0-9]*$ ]] \
+  || log::die "Boot volume size must be a positive integer GiB value"
+(( MAGNUM_BOOT_VOLUME_SIZE >= IMAGE_REQUIRED_DISK_GIB )) \
+  || log::die "Boot volume ${MAGNUM_BOOT_VOLUME_SIZE} GiB is smaller than image floor ${IMAGE_REQUIRED_DISK_GIB} GiB"
 
 log::step 3 "Validating network, flavors, keypair, and load balancer service"
 [[ "${MAGNUM_FLOATING_IP_ENABLED}" == true && "${MAGNUM_MASTER_LB_ENABLED}" == true ]] \
@@ -208,6 +228,7 @@ fi
 log::success "Preflight passed for project ${PROJECT_ID}"
 log::info "  template : ${MAGNUM_TEMPLATE_NAME} (${MAGNUM_TEMPLATE_ID})"
 log::info "  image    : ${IMAGE_NAME}"
+log::info "  root disk: ${MAGNUM_BOOT_VOLUME_SIZE} GiB (image floor ${IMAGE_REQUIRED_DISK_GIB} GiB)"
 log::info "  keypair  : ${MAGNUM_KEYPAIR}"
 log::info "  cluster  : ${MAGNUM_CLUSTER_NAME}"
 log::info "  profile  : ${CSOC_PROFILE} (${MAGNUM_MASTER_COUNT} x ${MAGNUM_MASTER_FLAVOR} control plane)"
