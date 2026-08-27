@@ -8,7 +8,7 @@ cluster_id="${FAKE_CLUSTER_ID:-11111111-2222-3333-4444-555555555555}"
 cluster_name="${MAGNUM_CLUSTER_NAME:-csoc-dev}"
 master_flavor="${FAKE_MASTER_FLAVOR:-m3.small}"
 worker_flavor="${FAKE_WORKER_FLAVOR:-m3.quad}"
-boot_volume_size="${FAKE_BOOT_VOLUME_SIZE:-40}"
+boot_volume_size="${FAKE_BOOT_VOLUME_SIZE:-20}"
 min_nodes="${MAGNUM_MIN_NODE_COUNT:-1}"
 max_nodes="${MAGNUM_MAX_NODE_COUNT:-1}"
 
@@ -41,8 +41,9 @@ case "${args}" in
     printf '{"uuid":"284de191-b8ea-4dae-9046-6ab982bd1c3a","name":"kubernetes-1-34-jammy","public":true,"hidden":false,"coe":"kubernetes","network_driver":"calico","image_id":"ubuntu-jammy-kube-v1.34.8-260518-1604"}\n'
     ;;
   image\ show*)
-    printf '{"id":"%s","name":"ubuntu-jammy-kube-v1.34.8-260518-1604","status":"active"}\n' \
-      "${FAKE_IMAGE_ID:-18895dd1-6e94-482b-9a62-9573328c7429}"
+    printf '{"id":"%s","name":"ubuntu-jammy-kube-v1.34.8-260518-1604","status":"active","min_disk":%s,"virtual_size":%s}\n' \
+      "${FAKE_IMAGE_ID:-18895dd1-6e94-482b-9a62-9573328c7429}" \
+      "${FAKE_IMAGE_MIN_DISK:-0}" "${FAKE_IMAGE_VIRTUAL_SIZE:-10737418240}"
     ;;
   "network show public -f json")
     printf '{"id":"3fe22c05-6206-4db2-9a13-44f04b6796e6","router:external":true}\n'

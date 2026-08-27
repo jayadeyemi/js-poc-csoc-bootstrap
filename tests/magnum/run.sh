@@ -19,6 +19,7 @@ export MAGNUM_CLOUDS_YAML="${TEST_ROOT}/credentials/magnum-clouds.yaml"
 export RUNTIME_CLOUDS_YAML="${TEST_ROOT}/credentials/runtime-clouds.yaml"
 export MAGNUM_STATE_FILE="${TEST_ROOT}/state/magnum-cluster.json"
 export MAGNUM_KUBECONFIG_DIR="${TEST_ROOT}/home/.kube"
+export CSOC_PROFILE=dev
 export MAGNUM_CLUSTER_NAME=csoc-dev
 export FAKE_CREATE_LOG="${TEST_ROOT}/create.log"
 export FAKE_CONFIG_LOG="${TEST_ROOT}/config.log"
@@ -55,11 +56,11 @@ expect_pass "cluster name supports an isolated environment override" \
   _ "${REPO_ROOT}/iac/magnum/cluster.env"
 
 expect_pass "dev profile isolates graph development and disables fleet" \
-  bash -c 'unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR; source "$1"; csoc::load_profile "$2"; [[ "$MAGNUM_CLUSTER_NAME" == csoc-dev && "$MAGNUM_STATE_FILE" == "$2/.state/csoc/dev/magnum-cluster.json" && "$CSOC_CATALOG_REVISION" == environment/dev && "$CSOC_FLEET_ENABLED" == false && "$MAGNUM_BOOT_VOLUME_SIZE" == 40 ]]' \
+  bash -c 'unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR; source "$1"; csoc::load_profile "$2"; [[ "$MAGNUM_CLUSTER_NAME" == csoc-dev && "$MAGNUM_STATE_FILE" == "$2/.state/csoc/dev/magnum-cluster.json" && "$CSOC_CATALOG_REVISION" == environment/dev && "$CSOC_FLEET_ENABLED" == false && "$MAGNUM_BOOT_VOLUME_SIZE" == 20 ]]' \
   _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}"
 
 expect_pass "prod profile freezes an HA control plane and coordinated branch" \
-  bash -c 'unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR; CSOC_PROFILE=prod; export CSOC_PROFILE; source "$1"; csoc::load_profile "$2"; [[ "$MAGNUM_MASTER_COUNT" == 3 && "$MAGNUM_MASTER_FLAVOR" == m3.small && "$CSOC_CATALOG_REVISION" == environment/prod && "$CSOC_FLEET_ENABLED" == true && "$MAGNUM_BOOT_VOLUME_SIZE" == 60 ]]' \
+  bash -c 'unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR; CSOC_PROFILE=prod; export CSOC_PROFILE; source "$1"; csoc::load_profile "$2"; [[ "$MAGNUM_MASTER_COUNT" == 3 && "$MAGNUM_MASTER_FLAVOR" == m3.small && "$CSOC_CATALOG_REVISION" == environment/prod && "$CSOC_FLEET_ENABLED" == true && "$MAGNUM_BOOT_VOLUME_SIZE" == 20 ]]' \
   _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}"
 
 expect_pass "preflight accepts separated credentials and exact infrastructure" \
@@ -74,13 +75,15 @@ FAKE_PROJECT_ID=wrong expect_fail "preflight rejects wrong project" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
 FAKE_IMAGE_ID=wrong expect_fail "preflight rejects wrong image UUID" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
+FAKE_IMAGE_MIN_DISK=21 expect_fail "preflight rejects a boot volume below the image floor" \
+  bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
 FAKE_FIXED_NETWORK_ID=wrong expect_fail "preflight rejects wrong fixed network UUID" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
 FAKE_SUBNET_NETWORK_ID=wrong expect_fail "preflight rejects wrong subnet relationship" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
 FAKE_MAX_INSTANCES=1 expect_fail "preflight rejects insufficient compute quota" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
-FAKE_VOLUME_SIZE=49950 expect_fail "preflight rejects less than 80 GiB volume headroom" \
+FAKE_VOLUME_SIZE=49980 expect_fail "preflight rejects less than 40 GiB volume headroom" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
 FAKE_AMBIGUOUS=true expect_fail "preflight rejects ambiguous cluster ownership" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
@@ -95,7 +98,7 @@ for required in \
   '--master-count 1' '--node-count 1' '--master-flavor m3.small' '--flavor m3.quad' \
   '--fixed-network auto_allocated_network' '--fixed-subnet auto_allocated_subnet_v4' \
   '--floating-ip-enabled' '--master-lb-enabled' '--merge-labels' \
-  '--labels boot_volume_size=40' '--labels auto_scaling_enabled=false' \
+  '--labels boot_volume_size=20' '--labels auto_scaling_enabled=false' \
   '--labels min_node_count=1' '--labels max_node_count=1'; do
   grep -F -- "${required}" "${FAKE_CREATE_LOG}" >/dev/null \
     || { printf 'not ok - create request missing %s\n' "${required}"; ((fail += 1)); }
