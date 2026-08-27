@@ -34,6 +34,22 @@ $EDITOR scripts/host/credentials/magnum-clouds.yaml
 $EDITOR scripts/host/credentials/accounts/test-poc/clouds.yaml
 ```
 
+When a private seed cloud is authorized to create application credentials, use
+the host workflow so credential secrets are written directly to a mode-0600
+file and never printed:
+
+```bash
+make credential-create \
+  SOURCE=/secure/seed-clouds.yaml \
+  OUTPUT=scripts/host/credentials/magnum-clouds.yaml \
+  NAME=csoc-dev-magnum-YYYYMMDD \
+  POLICY=unrestricted \
+  EXPIRES_AT=YYYY-MM-DDTHH:MM:SSZ
+```
+
+Use a unique name and output file for every CSOC environment. Use
+`POLICY=restricted` for account runtime credentials.
+
 ### 3. Supply to the management container
 
 The container launcher mounts the Magnum file and account directory read-only under
