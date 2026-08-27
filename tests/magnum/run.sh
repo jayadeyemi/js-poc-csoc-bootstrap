@@ -65,6 +65,9 @@ expect_pass "prod profile freezes an HA control plane and coordinated branch" \
 
 expect_pass "preflight accepts separated credentials and exact infrastructure" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
+RUNTIME_CLOUDS_YAML="${TEST_ROOT}/credentials/missing-runtime-clouds.yaml" \
+  expect_pass "dev preflight does not require an inactive fleet credential" \
+  bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
 FAKE_MAGNUM_UNRESTRICTED=false expect_fail "preflight rejects restricted Magnum credential" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
 FAKE_RUNTIME_UNRESTRICTED=true expect_fail "preflight rejects unrestricted runtime credential" \

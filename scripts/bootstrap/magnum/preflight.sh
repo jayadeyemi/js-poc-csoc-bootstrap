@@ -15,6 +15,10 @@ STATE_DIR=$(dirname "${STATE_FILE}")
 KUBECONFIG_DIR="${MAGNUM_KUBECONFIG_DIR:-${HOME}/.kube}"
 MAGNUM_CREDENTIAL_FILE=$(credentials::magnum_file)
 RUNTIME_CREDENTIAL_FILE=$(credentials::runtime_file)
+VALIDATE_RUNTIME_CREDENTIAL=false
+if [[ "${CSOC_FLEET_ENABLED}" == true || -f "${RUNTIME_CREDENTIAL_FILE}" ]]; then
+  VALIDATE_RUNTIME_CREDENTIAL=true
+fi
 
 for required_command in git openstack jq; do
   command -v "${required_command}" >/dev/null 2>&1 \
@@ -41,24 +45,28 @@ fi
 
 log::step 1 "Checking separated OpenStack credentials and local state paths"
 credentials::require_private_file "${MAGNUM_CREDENTIAL_FILE}" Magnum
-credentials::require_private_file "${RUNTIME_CREDENTIAL_FILE}" Runtime
 MAGNUM_CREDENTIAL_JSON=$(credentials::metadata "${MAGNUM_CREDENTIAL_FILE}" "${OS_CLOUD}")
-RUNTIME_CREDENTIAL_JSON=$(credentials::metadata "${RUNTIME_CREDENTIAL_FILE}" "${OS_CLOUD}")
 credentials::require_unexpired "${MAGNUM_CREDENTIAL_JSON}" Magnum
-credentials::require_unexpired "${RUNTIME_CREDENTIAL_JSON}" Runtime
 [[ $(jq -r '.project_id' <<<"${MAGNUM_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" \
    && $(jq -r '.app_project_id' <<<"${MAGNUM_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" ]] \
   || log::die "Magnum credential is not scoped to expected project ${MAGNUM_PROJECT_ID}"
-[[ $(jq -r '.project_id' <<<"${RUNTIME_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" \
-   && $(jq -r '.app_project_id' <<<"${RUNTIME_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" ]] \
-  || log::die "Runtime credential is not scoped to expected project ${MAGNUM_PROJECT_ID}"
 [[ $(jq -r '.unrestricted' <<<"${MAGNUM_CREDENTIAL_JSON}") == true ]] \
   || log::die "Magnum application credential must be unrestricted for trustee/trust creation"
-[[ $(jq -r '.unrestricted' <<<"${RUNTIME_CREDENTIAL_JSON}") == false ]] \
-  || log::die "Runtime CAPO/workload application credential must be restricted"
-[[ $(jq -r '.id' <<<"${MAGNUM_CREDENTIAL_JSON}") != \
-   $(jq -r '.id' <<<"${RUNTIME_CREDENTIAL_JSON}") ]] \
-  || log::die "Magnum and runtime credentials must be distinct"
+if [[ "${VALIDATE_RUNTIME_CREDENTIAL}" == true ]]; then
+  credentials::require_private_file "${RUNTIME_CREDENTIAL_FILE}" Runtime
+  RUNTIME_CREDENTIAL_JSON=$(credentials::metadata "${RUNTIME_CREDENTIAL_FILE}" "${OS_CLOUD}")
+  credentials::require_unexpired "${RUNTIME_CREDENTIAL_JSON}" Runtime
+  [[ $(jq -r '.project_id' <<<"${RUNTIME_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" \
+     && $(jq -r '.app_project_id' <<<"${RUNTIME_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" ]] \
+    || log::die "Runtime credential is not scoped to expected project ${MAGNUM_PROJECT_ID}"
+  [[ $(jq -r '.unrestricted' <<<"${RUNTIME_CREDENTIAL_JSON}") == false ]] \
+    || log::die "Runtime CAPO/workload application credential must be restricted"
+  [[ $(jq -r '.id' <<<"${MAGNUM_CREDENTIAL_JSON}") != \
+     $(jq -r '.id' <<<"${RUNTIME_CREDENTIAL_JSON}") ]] \
+    || log::die "Magnum and runtime credentials must be distinct"
+else
+  log::info "${CSOC_PROFILE} has no fleet; no runtime credential is required"
+fi
 mkdir -p "${STATE_DIR}" "${KUBECONFIG_DIR}"
 chmod 700 "${STATE_DIR}" "${KUBECONFIG_DIR}"
 [[ -w "${STATE_DIR}" && -w "${KUBECONFIG_DIR}" ]] \
