@@ -57,7 +57,8 @@ if rg --line-number 'coe cluster template (create|update|delete)' "${REPO_ROOT}/
 fi
 
 log::step 2 "Validating the three-project Argo ownership graph"
-for profile_manifest in iac/csoc/profiles/dev.profile iac/csoc/profiles/prod.profile; do
+for profile_manifest in iac/csoc/profiles/dev.profile iac/csoc/profiles/staging.profile \
+  iac/csoc/profiles/prod.profile; do
   git -C "${REPO_ROOT}" ls-files --error-unmatch "${profile_manifest}" >/dev/null \
     || log::die "CSOC environment selection must be tracked: ${profile_manifest}"
   if git -C "${REPO_ROOT}" check-ignore -q "${profile_manifest}"; then
@@ -71,8 +72,10 @@ mapfile -t project_names < <(
 )
 [[ "${project_names[*]}" == "csoc-baseline csoc-fleet rgds" ]] \
   || log::die "Expected exactly the csoc-baseline, csoc-fleet, and rgds AppProjects"
-[[ $(yq -r '.spec.project' "${REPO_ROOT}/argocd/app-of-apps.yaml") == rgds ]] \
-  || log::die "App-of-Apps must belong to rgds"
+for root_manifest in "${REPO_ROOT}"/iac/csoc/profiles/*-app-of-apps.yaml; do
+  [[ $(yq -r '.spec.project' "${root_manifest}") == rgds ]] \
+    || log::die "App-of-Apps must belong to rgds: ${root_manifest}"
+done
 for controller in "${REPO_ROOT}"/controllers/*.yaml; do
   [[ $(yq -r '.spec.project' "${controller}") == rgds ]] \
     || log::die "Controller Application must belong to rgds: ${controller}"
@@ -91,37 +94,49 @@ for resource in \
     "${REPO_ROOT}/argocd/projects/rgds.yaml" >/dev/null \
     || log::die "RGD project does not permit controller resource ${resource}"
 done
-[[ $(yq -r '.spec.source.repoURL' "${REPO_ROOT}/argocd/apps/rgds.yaml") \
-   == https://github.com/jayadeyemi/js-poc-csoc-app-catalog ]] \
-  || log::die "RGDs must be sourced from the app catalog"
-[[ $(yq -r '.spec.source.path' "${REPO_ROOT}/argocd/apps/rgds.yaml") == rgds ]] \
-  || log::die "RGD Application path is incorrect"
-[[ $(yq -r '.spec.source.path' "${REPO_ROOT}/argocd/apps/fleet.yaml") == . ]] \
-  || log::die "Fleet Application must source the fleet root"
-[[ $(yq -r '.spec.source.targetRevision' "${REPO_ROOT}/argocd/apps/rgds.yaml") == main \
-   && $(yq -r '.spec.source.targetRevision' "${REPO_ROOT}/argocd/apps/fleet.yaml") == main ]] \
-  || log::die "Development RGD and fleet Applications must track main"
-[[ $(yq -r '.spec.source.targetRevision' "${REPO_ROOT}/argocd/prod/apps/rgds.yaml") == release/prod \
-   && $(yq -r '.spec.source.targetRevision' "${REPO_ROOT}/argocd/prod/apps/controllers.yaml") == release/prod \
-   && ! -e "${REPO_ROOT}/argocd/prod/apps/fleet.yaml" ]] \
-  || log::die "Production must track release/prod for controllers/RGDs and omit fleet"
 source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
-CSOC_PROFILE=dev csoc::load_profile "${REPO_ROOT}"
-[[ "${MAGNUM_CLUSTER_NAME}" == js2-mgmt-cluster-2 \
-   && "${MAGNUM_MASTER_COUNT}:${MAGNUM_MASTER_FLAVOR}" == 1:m3.quad \
-   && "${CSOC_FLEET_ENABLED}" == true ]] \
-  || log::die "Development profile does not bind the existing small CSOC"
-unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR MAGNUM_MASTER_COUNT \
-  MAGNUM_MASTER_FLAVOR MAGNUM_NODE_COUNT MAGNUM_WORKER_FLAVOR MAGNUM_MIN_NODE_COUNT \
-  MAGNUM_MAX_NODE_COUNT MAGNUM_EXPECTED_INITIAL_NODES
-CSOC_PROFILE=prod csoc::load_profile "${REPO_ROOT}"
-[[ "${MAGNUM_MASTER_COUNT}:${MAGNUM_MASTER_FLAVOR}" == 3:m3.quad \
-   && "${CSOC_FLEET_ENABLED}" == false \
-   && "${CSOC_CATALOG_REVISION}" == release/prod ]] \
-  || log::die "Production profile must freeze an HA control plane, use release/prod, and disable fleet"
-unset CSOC_PROFILE MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR \
-  MAGNUM_MASTER_COUNT MAGNUM_MASTER_FLAVOR MAGNUM_NODE_COUNT MAGNUM_WORKER_FLAVOR \
-  MAGNUM_MIN_NODE_COUNT MAGNUM_MAX_NODE_COUNT MAGNUM_EXPECTED_INITIAL_NODES
+for profile in dev staging prod; do
+  (
+    unset CSOC_PROFILE_NAME CSOC_FLEET_ENABLED CSOC_BOOTSTRAP_REVISION
+    unset CSOC_CATALOG_REVISION CSOC_FLEET_REVISION CSOC_ARGO_ROOT_MANIFEST_REL
+    unset CSOC_APPLICATION_DIR_REL CSOC_FLEET_PATH MAGNUM_CLUSTER_NAME
+    unset MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR MAGNUM_MASTER_COUNT
+    unset MAGNUM_MASTER_FLAVOR MAGNUM_NODE_COUNT MAGNUM_WORKER_FLAVOR
+    unset MAGNUM_MIN_NODE_COUNT MAGNUM_MAX_NODE_COUNT MAGNUM_EXPECTED_INITIAL_NODES
+    unset MAGNUM_BOOT_VOLUME_SIZE MAGNUM_AUTO_SCALING_ENABLED
+    CSOC_PROFILE=${profile}
+    csoc::load_profile "${REPO_ROOT}"
+    expected_revision="environment/${profile}"
+    [[ "${MAGNUM_CLUSTER_NAME}" == "csoc-${profile}" \
+       && "${CSOC_BOOTSTRAP_REVISION}" == "${expected_revision}" \
+       && "${CSOC_CATALOG_REVISION}" == "${expected_revision}" \
+       && "${CSOC_FLEET_REVISION}" == "${expected_revision}" ]] \
+      || log::die "${profile} profile identity or revisions are inconsistent"
+    app_dir="${REPO_ROOT}/${CSOC_APPLICATION_DIR_REL}"
+    [[ -f "${app_dir}/controllers.yaml" && -f "${app_dir}/rgds.yaml" ]] \
+      || log::die "${profile} controller/RGD Applications are missing"
+    [[ $(yq -r '.spec.source.targetRevision' "${app_dir}/controllers.yaml") == "${expected_revision}" \
+       && $(yq -r '.spec.source.targetRevision' "${app_dir}/rgds.yaml") == "${expected_revision}" \
+       && $(yq -r '.spec.source.repoURL' "${app_dir}/rgds.yaml") \
+          == https://github.com/jayadeyemi/js-poc-csoc-app-catalog ]] \
+      || log::die "${profile} Applications do not use coordinated revisions"
+    if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
+      [[ -f "${app_dir}/fleet.yaml" \
+         && $(yq -r '.spec.source.targetRevision' "${app_dir}/fleet.yaml") == "${expected_revision}" \
+         && $(yq -r '.spec.source.path' "${app_dir}/fleet.yaml") == "environments/${profile}" ]] \
+        || log::die "${profile} fleet Application is inconsistent"
+    else
+      [[ ! -e "${app_dir}/fleet.yaml" ]] \
+        || log::die "${profile} must not declare a fleet Application"
+    fi
+  )
+done
+[[ $(CSOC_PROFILE=dev bash -c 'source "$1"; csoc::load_profile "$2"; printf "%s:%s:%s" "$MAGNUM_BOOT_VOLUME_SIZE" "$MAGNUM_MASTER_FLAVOR" "$CSOC_FLEET_ENABLED"' _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 40:m3.small:false ]] \
+  || log::die "Dev must use the small no-fleet profile"
+[[ $(CSOC_PROFILE=staging bash -c 'source "$1"; csoc::load_profile "$2"; printf "%s:%s" "$MAGNUM_BOOT_VOLUME_SIZE" "$CSOC_FLEET_ENABLED"' _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 40:true ]] \
+  || log::die "Staging sizing or fleet policy is incorrect"
+[[ $(CSOC_PROFILE=prod bash -c 'source "$1"; csoc::load_profile "$2"; printf "%s:%s:%s" "$MAGNUM_BOOT_VOLUME_SIZE" "$MAGNUM_MASTER_COUNT" "$CSOC_FLEET_ENABLED"' _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 60:3:true ]] \
+  || log::die "Prod sizing or fleet policy is incorrect"
 [[ ! -e "${REPO_ROOT}/argocd/apps/csoc-baseline.yaml" \
    && ! -d "${REPO_ROOT}/argocd/applicationsets" ]] \
   || log::die "Baseline Applications and ApplicationSets must be removed"
@@ -154,8 +169,10 @@ yq -e '.spec.namespaceResourceWhitelist[] | select(.group == "apps.csoc.js2.org"
   || log::die "CSOC baseline project must not target spokeclusters namespaces"
 [[ $(yq -r '.spec.orphanedResources.warn' "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml") == true ]] \
   || log::die "Fleet project must warn about Git-retired resources awaiting deliberate teardown"
-[[ $(yq -r '.spec.syncPolicy.automated.prune' "${REPO_ROOT}/argocd/apps/fleet.yaml") == false ]] \
-  || log::die "Fleet pruning must remain disabled"
+for fleet_app in "${REPO_ROOT}"/argocd/environments/{staging,prod}/apps/fleet.yaml; do
+  [[ $(yq -r '.spec.syncPolicy.automated.prune' "${fleet_app}") == false ]] \
+    || log::die "Fleet pruning must remain disabled: ${fleet_app}"
+done
 
 log::step 3 "Validating identity and network RGD restrictions"
 RGD_PACKAGE_ROOT="${CATALOG_ROOT}/rgds/test-poc"
@@ -341,14 +358,38 @@ done
 [[ $(yq -r '.spec.resources[] | select(.id == "openstackcluster") | .template.spec.managedSecurityGroups.allowAllInClusterTraffic' "${SPOKE_RGD}") == false ]] \
   || log::die "Spoke security groups must not allow all cluster traffic"
 
-log::step 5 "Validating inactive compositions and explicit workload ownership"
-CSOC_DIR="${FLEET_ROOT}/csoc"
+log::step 5 "Validating environment ownership and direct spoke workloads"
 EXAMPLES_DIR="${FLEET_ROOT}/examples"
-[[ -f "${FLEET_ROOT}/kustomization.yaml" && -f "${CSOC_DIR}/kustomization.yaml" \
+[[ -f "${FLEET_ROOT}/kustomization.yaml" && -f "${FLEET_ROOT}/ownership.yaml" \
    && -f "${EXAMPLES_DIR}/README.md" ]] \
-  || log::die "Fleet root must expose CSOC resources and documented examples"
-[[ $(yq -r '.resources | length' "${FLEET_ROOT}/accounts/kustomization.yaml") == 0 ]] \
-  || log::die "Retired development fleet must not leave an active spoke account"
+  || log::die "Fleet root must expose ownership and documented examples"
+[[ $(yq -r '.resources | length' "${FLEET_ROOT}/kustomization.yaml") == 0 \
+   && $(yq -r '.resources | length' "${FLEET_ROOT}/environments/dev/kustomization.yaml") == 0 ]] \
+  || log::die "Fleet root and dev environment must never render instances"
+declare -A ownership_keys=()
+while IFS='|' read -r account app environment owner path; do
+  key="${account}/${app}/${environment}"
+  [[ -n "${account}" && -n "${app}" && -n "${environment}" && -n "${owner}" && -n "${path}" ]] \
+    || log::die "Fleet ownership entry has an empty field"
+  [[ -z "${ownership_keys[${key}]:-}" ]] \
+    || log::die "Fleet tuple ${key} has more than one owner"
+  ownership_keys[${key}]="${owner}"
+  expected_path="environments/${owner}/accounts/${account}/${app}/${environment}"
+  [[ "${path}" == "${expected_path}" && -d "${FLEET_ROOT}/${path}" ]] \
+    || log::die "Fleet tuple ${key} path does not match owner ${owner}"
+  canonical_name="${account}-${app}-${environment}"
+  for manifest in identity-config identity spoke-config network keypair cluster hello-app; do
+    [[ -f "${FLEET_ROOT}/${path}/${manifest}.yaml" ]] \
+      || log::die "Fleet tuple ${key} is missing ${manifest}.yaml"
+  done
+  [[ $(yq -r '.metadata.name' "${FLEET_ROOT}/${path}/cluster.yaml") == "${canonical_name}" \
+     && $(yq -r '.metadata.namespace' "${FLEET_ROOT}/${path}/cluster.yaml") == "spokeclusters-${canonical_name}" \
+     && $(yq -r '.spec.clusterName' "${FLEET_ROOT}/${path}/hello-app.yaml") == "${canonical_name}" ]] \
+    || log::die "Fleet tuple ${key} does not use its canonical name/namespace"
+done < <(yq -r '.assignments[] | [.account,.app,.environment,.owner,.path] | join("|")' \
+  "${FLEET_ROOT}/ownership.yaml")
+[[ "${ownership_keys[test-poc/hello-app/dev]:-}" == staging ]] \
+  || log::die "test-poc/hello-app/dev must be staging-owned"
 [[ -f "${EXAMPLES_DIR}/retired/poc-tenant-dev/kustomization.yaml" ]] \
   || log::die "Retired poc-tenant-dev composition must remain documented"
 (( $(find "${EXAMPLES_DIR}/compositions" -mindepth 1 -maxdepth 1 -type d | wc -l) >= 5 )) \
@@ -357,10 +398,6 @@ while IFS= read -r kustomization; do
   [[ -f "$(dirname "${kustomization}")/README.md" ]] \
     || log::die "Example package lacks README: ${kustomization}"
 done < <(find "${EXAMPLES_DIR}/compositions" "${EXAMPLES_DIR}/connections" -name kustomization.yaml | sort)
-[[ $(yq -r '.kind + ":" + .metadata.name' "${CSOC_DIR}/hello-app.yaml") == HelloApp:csoc \
-   && $(yq -r '.spec | keys | join(",")' "${CSOC_DIR}/hello-app.yaml") == target,replicas \
-   && $(yq -r '.spec.target' "${CSOC_DIR}/hello-app.yaml") == csoc ]] \
-  || log::die "CSOC Hello instance must use the direct-only API"
 [[ $(yq -r '.spec.resources[] | select(.id == "service") | .template.metadata.annotations."service.beta.kubernetes.io/openstack-internal-load-balancer"' "${HELLO_RGD}") == true ]] \
   || log::die "CSOC Hello load balancer must remain internal"
 yq -e '.spec.resources[] | select(.id == "resourceset") | .template.kind == "ClusterResourceSet"' \
@@ -381,11 +418,11 @@ while IFS= read -r rgd; do
   [[ -f "${rgd%.yaml}.md" ]] || log::die "RGD lacks paired documentation: ${rgd}"
 done < <(find "${RGD_PACKAGE_ROOT}" -type f -name '*.rgd.yaml' | sort)
 if rg --line-number '(secret(Name|Ref)|applicationCredential|credentialSecret):' \
-    "${FLEET_ROOT}/accounts" "${FLEET_ROOT}/examples"; then
+    "${FLEET_ROOT}/environments" "${FLEET_ROOT}/examples"; then
   log::die "Fleet instances must not name or embed credentials"
 fi
 if rg --line-number 'loadBalancerIP|0\.0\.0\.0/0' \
-    "${RGD_PACKAGE_ROOT}/workloads" "${FLEET_ROOT}/csoc" "${EXAMPLES_DIR}"; then
+    "${RGD_PACKAGE_ROOT}/workloads" "${FLEET_ROOT}/environments" "${EXAMPLES_DIR}"; then
   log::die "Hello workloads must not request an unrestricted address"
 fi
 

@@ -9,6 +9,10 @@ source "${REPO_ROOT}/scripts/lib/logging.bash"
 source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
 csoc::load_profile "${REPO_ROOT}"
 
+CONTEXT_NAME=$(basename "${WORKSPACE_ROOT}")
+[[ "${CONTEXT_NAME}" == "${CSOC_PROFILE}" ]] \
+  || log::die "Folder context ${CONTEXT_NAME} cannot run PROFILE=${CSOC_PROFILE}"
+
 IMAGE_NAME="${JETSTREAM_IMAGE_NAME:-jetstream2-mgmt}"
 IMAGE_TAG="${JETSTREAM_IMAGE_TAG:-latest}"
 

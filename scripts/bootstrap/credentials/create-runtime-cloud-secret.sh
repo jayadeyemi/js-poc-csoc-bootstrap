@@ -71,10 +71,20 @@ load_identity() {
 
   [[ "${identity}" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] \
     || log::die "Invalid identity name: ${identity}"
-  identity_file="${TRUSTED_FLEET_ROOT}/accounts/${identity}/identity-config.yaml"
+  identity_file=
+  while IFS= read -r candidate; do
+    if IDENTITY_NAME="${identity}" yq -e \
+        'select(.kind == "ImmutableSpokeConfig" and .metadata.name == strenv(IDENTITY_NAME))' \
+        "${candidate}" >/dev/null 2>&1; then
+      [[ -z "${identity_file}" ]] \
+        || log::die "Identity ${identity} is declared more than once in ${CSOC_FLEET_PATH}"
+      identity_file=${candidate}
+    fi
+  done < <(find "${TRUSTED_FLEET_ROOT}/${CSOC_FLEET_PATH}/accounts" \
+    -type f -name identity-config.yaml | sort)
   clouds_file="${ACCOUNTS_DIR}/${identity}/clouds.yaml"
-  [[ -f "${identity_file}" ]] \
-    || log::die "Trusted SpokeIdentity configuration not found: ${identity_file}"
+  [[ -n "${identity_file}" && -f "${identity_file}" ]] \
+    || log::die "Trusted SpokeIdentity configuration not found for ${identity} in ${CSOC_FLEET_PATH}"
   credentials::require_private_file "${clouds_file}" "${identity} runtime"
 
   project_id=$(IDENTITY_NAME="${identity}" yq -er \
