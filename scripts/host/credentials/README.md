@@ -82,9 +82,11 @@ bash scripts/bootstrap/credentials/create-runtime-cloud-secret.sh test-poc
 bash scripts/bootstrap/credentials/create-runtime-cloud-secret.sh --all
 ```
 
-This creates `<identity>-cloud-config` and
-`<identity>-workload-cloud-config` only in `spokeclusters-<identity>`. The
-helper rejects unrestricted credentials and project mismatches.
+The argument and credential directory identify an account. For every trusted
+tuple owned by that account, this creates `<canonical-tuple>-cloud-config` and
+`<canonical-tuple>-workload-cloud-config` only in
+`spokeclusters-<canonical-tuple>`. The helper rejects unrestricted credentials,
+project mismatches, and account tuples that span projects.
 
 ---
 

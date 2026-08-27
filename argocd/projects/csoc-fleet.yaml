@@ -58,3 +58,7 @@ spec:
       kind: SpokeHelloApp
     - group: apps.csoc.js2.org
       kind: SpokeGitOps
+    - group: apps.csoc.js2.org
+      kind: SpokeArgoCD
+    - group: apps.csoc.js2.org
+      kind: SpokeArgoApplication

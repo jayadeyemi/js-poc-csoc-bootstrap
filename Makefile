@@ -111,8 +111,8 @@ credential-create: ## Create an expiring app credential (SOURCE/OUTPUT/NAME/POLI
 	CREDENTIAL_EXPIRES_AT="$${EXPIRES_AT}" \
 	bash scripts/host/create-application-credential.sh
 
-capi-secret: ## Load/update restricted CAPO/ORC and workload secrets (IDENTITY=test-poc)
-	bash scripts/bootstrap/credentials/create-runtime-cloud-secret.sh $${IDENTITY:-test-poc}
+capi-secret: ## Load/update restricted CAPO/ORC and workload secrets (ACCOUNT=test-poc)
+	bash scripts/bootstrap/credentials/create-runtime-cloud-secret.sh $${ACCOUNT:-$${IDENTITY:-test-poc}}
 
 # ── Spoke lifecycle ───────────────────────────────────────────────────────────
 destroy-spoke: ## Retire a Git-removed spoke (IDENTITY=test-poc SPOKE=poc-tenant-dev)

@@ -156,7 +156,7 @@ for kind in ImmutableSpokeConfig SpokeIdentity; do
     "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml" >/dev/null \
     || log::die "Fleet project does not permit cluster-scoped ${kind}"
 done
-for kind in HelloApp SpokeHelloApp SpokeGitOps; do
+for kind in HelloApp SpokeHelloApp SpokeGitOps SpokeArgoCD SpokeArgoApplication; do
   yq -e ".spec.namespaceResourceWhitelist[] | select(.group == \"apps.csoc.js2.org\" and .kind == \"${kind}\")" \
     "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml" >/dev/null \
     || log::die "Fleet project does not permit ${kind}"
@@ -193,11 +193,14 @@ SPOKE_RGD="${RGD_PACKAGE_ROOT}/cluster/v1/spoke-cluster.rgd.yaml"
 HELLO_RGD="${RGD_PACKAGE_ROOT}/workloads/hello-app.rgd.yaml"
 SPOKE_HELLO_RGD="${RGD_PACKAGE_ROOT}/workloads/spoke-hello-app.rgd.yaml"
 SPOKE_GITOPS_RGD="${RGD_PACKAGE_ROOT}/workloads/spoke-gitops.rgd.yaml"
+SPOKE_ARGOCD_RGD="${RGD_PACKAGE_ROOT}/workloads/spoke-argocd.rgd.yaml"
+SPOKE_ARGO_APPLICATION_RGD="${RGD_PACKAGE_ROOT}/workloads/spoke-argo-application.rgd.yaml"
 for rgd in "${CONFIG_RGD}" "${ENV_CONFIG_RGD}" "${IMPORT_CONFIG_RGD}" \
   "${IDENTITY_RGD}" "${AUTO_NETWORK_RGD}" "${DEDICATED_NETWORK_RGD}" \
   "${IMPORTED_NETWORK_RGD}" "${ISOLATED_NETWORK_RGD}" "${ROUTED_NETWORK_RGD}" \
   "${KEYPAIR_RGD}" "${SERVER_GROUP_RGD}" "${SECURITY_GROUP_RGD}" "${VOLUME_RGD}" \
-  "${SPOKE_RGD}" "${HELLO_RGD}" "${SPOKE_HELLO_RGD}" "${SPOKE_GITOPS_RGD}"; do
+  "${SPOKE_RGD}" "${HELLO_RGD}" "${SPOKE_HELLO_RGD}" "${SPOKE_GITOPS_RGD}" \
+  "${SPOKE_ARGOCD_RGD}" "${SPOKE_ARGO_APPLICATION_RGD}"; do
   [[ $(yq -r '.apiVersion' "${rgd}") == kro.run/v1alpha1 ]] \
     || log::die "Invalid RGD apiVersion: ${rgd}"
   if rg --line-number 'default\(' "${rgd}"; then
@@ -378,18 +381,37 @@ while IFS='|' read -r account app environment owner path; do
   [[ "${path}" == "${expected_path}" && -d "${FLEET_ROOT}/${path}" ]] \
     || log::die "Fleet tuple ${key} path does not match owner ${owner}"
   canonical_name="${account}-${app}-${environment}"
-  for manifest in identity-config identity spoke-config network keypair cluster hello-app; do
+  for manifest in identity-config identity spoke-config network keypair cluster; do
     [[ -f "${FLEET_ROOT}/${path}/${manifest}.yaml" ]] \
       || log::die "Fleet tuple ${key} is missing ${manifest}.yaml"
   done
-  [[ $(yq -r '.metadata.name' "${FLEET_ROOT}/${path}/cluster.yaml") == "${canonical_name}" \
-     && $(yq -r '.metadata.namespace' "${FLEET_ROOT}/${path}/cluster.yaml") == "spokeclusters-${canonical_name}" \
-     && $(yq -r '.spec.clusterName' "${FLEET_ROOT}/${path}/hello-app.yaml") == "${canonical_name}" ]] \
+  [[ $(yq -r '.metadata.name' "${FLEET_ROOT}/${path}/identity-config.yaml") == "${canonical_name}" \
+     && $(yq -r '.metadata.labels."csoc.js2.org/account"' "${FLEET_ROOT}/${path}/identity-config.yaml") == "${account}" \
+     && $(yq -r '.metadata.labels."csoc.js2.org/app"' "${FLEET_ROOT}/${path}/identity-config.yaml") == "${app}" \
+     && $(yq -r '.metadata.labels."csoc.js2.org/environment"' "${FLEET_ROOT}/${path}/identity-config.yaml") == "${environment}" \
+     && $(yq -r '.metadata.name' "${FLEET_ROOT}/${path}/identity.yaml") == "${canonical_name}" \
+     && $(yq -r '.metadata.name' "${FLEET_ROOT}/${path}/cluster.yaml") == "${canonical_name}" \
+     && $(yq -r '.metadata.namespace' "${FLEET_ROOT}/${path}/cluster.yaml") == "spokeclusters-${canonical_name}" ]] \
     || log::die "Fleet tuple ${key} does not use its canonical name/namespace"
+  if [[ -f "${FLEET_ROOT}/${path}/hello-app.yaml" ]]; then
+    [[ ! -e "${FLEET_ROOT}/${path}/argocd.yaml" \
+       && ! -e "${FLEET_ROOT}/${path}/application.yaml" \
+       && $(yq -r '.spec.clusterName' "${FLEET_ROOT}/${path}/hello-app.yaml") == "${canonical_name}" ]] \
+      || log::die "Fleet tuple ${key} mixes central and spoke-local workload ownership"
+  else
+    [[ -f "${FLEET_ROOT}/${path}/argocd.yaml" \
+       && -f "${FLEET_ROOT}/${path}/application.yaml" \
+       && $(yq -r '.spec.clusterName' "${FLEET_ROOT}/${path}/argocd.yaml") == "${canonical_name}" \
+       && $(yq -r '.spec.clusterName' "${FLEET_ROOT}/${path}/application.yaml") == "${canonical_name}" \
+       && $(yq -r '.spec.argoCDName' "${FLEET_ROOT}/${path}/application.yaml") == "${canonical_name}" ]] \
+      || log::die "Fleet tuple ${key} lacks a complete modular spoke-local Argo owner"
+  fi
 done < <(yq -r '.assignments[] | [.account,.app,.environment,.owner,.path] | join("|")' \
   "${FLEET_ROOT}/ownership.yaml")
 [[ "${ownership_keys[test-poc/hello-app/dev]:-}" == staging ]] \
   || log::die "test-poc/hello-app/dev must be staging-owned"
+[[ "${ownership_keys[training-account/jupyterhub/dev]:-}" == staging ]] \
+  || log::die "training-account/jupyterhub/dev must be staging-owned"
 [[ -f "${EXAMPLES_DIR}/retired/poc-tenant-dev/kustomization.yaml" ]] \
   || log::die "Retired poc-tenant-dev composition must remain documented"
 (( $(find "${EXAMPLES_DIR}/compositions" -mindepth 1 -maxdepth 1 -type d | wc -l) >= 5 )) \
@@ -414,6 +436,17 @@ done
   || log::die "SpokeGitOps must install the pinned Argo CD chart through CAPI addons"
 rg -Fq 'repoURL: ${schema.spec.repositoryURL}' "${SPOKE_GITOPS_RGD}" \
   || log::die "SpokeGitOps root Application must use the declared repository"
+[[ $(yq -r '.spec.resources[] | select(.id == "argocd") | .template.kind' "${SPOKE_ARGOCD_RGD}") == HelmChartProxy \
+   && $(yq -r '.spec.resources[] | select(.id == "argocd") | .template.spec.version' "${SPOKE_ARGOCD_RGD}") == "${ARGOCD_CHART_VERSION}" ]] \
+  || log::die "SpokeArgoCD must own only the pinned Argo CD HelmChartProxy"
+[[ $(yq -r '.spec.schema.spec.targetRevision' "${SPOKE_ARGO_APPLICATION_RGD}") == *'^[0-9a-f]{40}$'* \
+   && $(yq -r '.spec.resources[] | select(.id == "resourceset") | .template.spec.strategy' "${SPOKE_ARGO_APPLICATION_RGD}") == Reconcile ]] \
+  || log::die "SpokeArgoApplication must require an immutable revision and reconcile continuously"
+TRAINING_APPLICATION="${FLEET_ROOT}/environments/staging/accounts/training-account/jupyterhub/dev/application.yaml"
+[[ $(yq -r '.spec.repositoryURL' "${TRAINING_APPLICATION}") == https://github.com/jayadeyemi/gitops.git \
+   && $(yq -r '.spec.targetRevision' "${TRAINING_APPLICATION}") =~ ^[0-9a-f]{40}$ \
+   && $(yq -r '.spec.path' "${TRAINING_APPLICATION}") == argo/clusters/training-account/dev ]] \
+  || log::die "Training account Application must pin the reviewed GitOps fork bundle"
 while IFS= read -r rgd; do
   [[ -f "${rgd%.yaml}.md" ]] || log::die "RGD lacks paired documentation: ${rgd}"
 done < <(find "${RGD_PACKAGE_ROOT}" -type f -name '*.rgd.yaml' | sort)
