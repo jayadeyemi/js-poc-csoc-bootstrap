@@ -123,7 +123,7 @@ for profile in dev staging prod; do
     if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
       [[ -f "${app_dir}/fleet.yaml" \
          && $(yq -r '.spec.source.targetRevision' "${app_dir}/fleet.yaml") == "${expected_revision}" \
-         && $(yq -r '.spec.source.path' "${app_dir}/fleet.yaml") == "environments/${profile}" ]] \
+         && $(yq -r '.spec.source.path' "${app_dir}/fleet.yaml") == "accounts/${profile}" ]] \
         || log::die "${profile} fleet Application is inconsistent"
     else
       [[ ! -e "${app_dir}/fleet.yaml" ]] \
@@ -367,8 +367,8 @@ EXAMPLES_DIR="${FLEET_ROOT}/examples"
    && -f "${EXAMPLES_DIR}/README.md" ]] \
   || log::die "Fleet root must expose ownership and documented examples"
 [[ $(yq -r '.resources | length' "${FLEET_ROOT}/kustomization.yaml") == 0 \
-   && $(yq -r '.resources | length' "${FLEET_ROOT}/environments/dev/kustomization.yaml") == 0 ]] \
-  || log::die "Fleet root and dev environment must never render instances"
+   && $(yq -r '.resources | length' "${FLEET_ROOT}/accounts/dev/kustomization.yaml") == 0 ]] \
+  || log::die "Fleet root and dev owner root must never render instances"
 declare -A ownership_keys=()
 while IFS='|' read -r account app environment owner path; do
   key="${account}/${app}/${environment}"
@@ -377,7 +377,7 @@ while IFS='|' read -r account app environment owner path; do
   [[ -z "${ownership_keys[${key}]:-}" ]] \
     || log::die "Fleet tuple ${key} has more than one owner"
   ownership_keys[${key}]="${owner}"
-  expected_path="environments/${owner}/accounts/${account}/${app}/${environment}"
+  expected_path="accounts/${owner}/accounts/${account}/${app}/${environment}"
   [[ "${path}" == "${expected_path}" && -d "${FLEET_ROOT}/${path}" ]] \
     || log::die "Fleet tuple ${key} path does not match owner ${owner}"
   canonical_name="${account}-${app}-${environment}"
@@ -442,7 +442,7 @@ rg -Fq 'repoURL: ${schema.spec.repositoryURL}' "${SPOKE_GITOPS_RGD}" \
 [[ $(yq -r '.spec.schema.spec.targetRevision' "${SPOKE_ARGO_APPLICATION_RGD}") == *'^[0-9a-f]{40}$'* \
    && $(yq -r '.spec.resources[] | select(.id == "resourceset") | .template.spec.strategy' "${SPOKE_ARGO_APPLICATION_RGD}") == Reconcile ]] \
   || log::die "SpokeArgoApplication must require an immutable revision and reconcile continuously"
-TRAINING_APPLICATION="${FLEET_ROOT}/environments/staging/accounts/training-account/jupyterhub/dev/application.yaml"
+TRAINING_APPLICATION="${FLEET_ROOT}/accounts/staging/accounts/training-account/jupyterhub/dev/application.yaml"
 [[ $(yq -r '.spec.repositoryURL' "${TRAINING_APPLICATION}") == https://github.com/jayadeyemi/gitops.git \
    && $(yq -r '.spec.targetRevision' "${TRAINING_APPLICATION}") =~ ^[0-9a-f]{40}$ \
    && $(yq -r '.spec.path' "${TRAINING_APPLICATION}") == argo/clusters/training-account/dev ]] \
@@ -451,11 +451,11 @@ while IFS= read -r rgd; do
   [[ -f "${rgd%.yaml}.md" ]] || log::die "RGD lacks paired documentation: ${rgd}"
 done < <(find "${RGD_PACKAGE_ROOT}" -type f -name '*.rgd.yaml' | sort)
 if rg --line-number '(secret(Name|Ref)|applicationCredential|credentialSecret):' \
-    "${FLEET_ROOT}/environments" "${FLEET_ROOT}/examples"; then
+    "${FLEET_ROOT}/accounts" "${FLEET_ROOT}/examples"; then
   log::die "Fleet instances must not name or embed credentials"
 fi
 if rg --line-number 'loadBalancerIP|0\.0\.0\.0/0' \
-    "${RGD_PACKAGE_ROOT}/workloads" "${FLEET_ROOT}/environments" "${EXAMPLES_DIR}"; then
+    "${RGD_PACKAGE_ROOT}/workloads" "${FLEET_ROOT}/accounts" "${EXAMPLES_DIR}"; then
   log::die "Hello workloads must not request an unrestricted address"
 fi
 

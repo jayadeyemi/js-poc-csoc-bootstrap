@@ -8,8 +8,8 @@ TEST_ROOT=$(mktemp -d)
 trap 'rm -rf -- "${TEST_ROOT}"' EXIT
 mkdir -p "${TEST_ROOT}/bin" "${TEST_ROOT}/accounts/account-a" \
   "${TEST_ROOT}/accounts/account-b" \
-  "${TEST_ROOT}/fleet/environments/staging/accounts/account-a/hello/dev" \
-  "${TEST_ROOT}/fleet/environments/staging/accounts/account-b/hello/dev" \
+  "${TEST_ROOT}/fleet/accounts/staging/accounts/account-a/hello/dev" \
+  "${TEST_ROOT}/fleet/accounts/staging/accounts/account-b/hello/dev" \
   "${TEST_ROOT}/kube-state"
 ln -s "${SCRIPT_DIR}/fake-openstack.sh" "${TEST_ROOT}/bin/openstack"
 ln -s "${SCRIPT_DIR}/fake-kubectl.sh" "${TEST_ROOT}/bin/kubectl"
@@ -25,7 +25,7 @@ write_identity() {
     "    csoc.js2.org/account: ${account}" \
     'spec:' \
     "  projectID: ${project}" \
-    >"${TEST_ROOT}/fleet/environments/staging/accounts/${account}/hello/dev/identity-config.yaml"
+    >"${TEST_ROOT}/fleet/accounts/staging/accounts/${account}/hello/dev/identity-config.yaml"
 }
 
 write_cloud() {

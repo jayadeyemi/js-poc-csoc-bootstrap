@@ -23,7 +23,7 @@ csoc::load_profile() {
     || { printf 'Profile identity mismatch in %s\n' "${profile_file}" >&2; return 65; }
   [[ "${CSOC_FLEET_ENABLED}" == true || "${CSOC_FLEET_ENABLED}" == false ]] \
     || { printf 'CSOC_FLEET_ENABLED must be true or false\n' >&2; return 65; }
-  [[ "${CSOC_FLEET_PATH}" == "environments/${profile}" ]] \
+  [[ "${CSOC_FLEET_PATH}" == "accounts/${profile}" ]] \
     || { printf 'CSOC_FLEET_PATH must match the selected profile\n' >&2; return 65; }
   [[ "${MAGNUM_CLUSTER_NAME}" == "csoc-${profile}" ]] \
     || { printf 'MAGNUM_CLUSTER_NAME must be csoc-%s\n' "${profile}" >&2; return 65; }

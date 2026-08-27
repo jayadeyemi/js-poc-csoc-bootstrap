@@ -7,7 +7,7 @@ CSOC_CATALOG_REVISION=environment/prod
 CSOC_FLEET_REVISION=environment/prod
 CSOC_ARGO_ROOT_MANIFEST_REL=iac/csoc/profiles/prod-app-of-apps.yaml
 CSOC_APPLICATION_DIR_REL=argocd/environments/prod/apps
-CSOC_FLEET_PATH=environments/prod
+CSOC_FLEET_PATH=accounts/prod
 
 MAGNUM_CLUSTER_NAME=${MAGNUM_CLUSTER_NAME:-csoc-prod}
 MAGNUM_STATE_FILE_REL=.state/csoc/prod/magnum-cluster.json

@@ -10,7 +10,7 @@ spec:
   source:
     repoURL: https://github.com/jayadeyemi/js-poc-csoc-fleet
     targetRevision: environment/prod
-    path: environments/prod
+    path: accounts/prod
   destination:
     server: https://kubernetes.default.svc
     namespace: kro-system

@@ -7,7 +7,7 @@ CSOC_CATALOG_REVISION=environment/staging
 CSOC_FLEET_REVISION=environment/staging
 CSOC_ARGO_ROOT_MANIFEST_REL=iac/csoc/profiles/staging-app-of-apps.yaml
 CSOC_APPLICATION_DIR_REL=argocd/environments/staging/apps
-CSOC_FLEET_PATH=environments/staging
+CSOC_FLEET_PATH=accounts/staging
 
 MAGNUM_CLUSTER_NAME=${MAGNUM_CLUSTER_NAME:-csoc-staging}
 MAGNUM_STATE_FILE_REL=.state/csoc/staging/magnum-cluster.json
