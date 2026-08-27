@@ -16,13 +16,19 @@ credentials::configure_magnum
 CLUSTER_ID=$(os::verify_owned_cluster "${STATE_FILE}" "${MAGNUM_CLUSTER_NAME}")
 CLUSTER_JSON=$(openstack coe cluster show "${CLUSTER_ID}" -f json)
 API_ADDRESS=$(jq -r '.api_address // empty' <<<"${CLUSTER_JSON}")
+VERIFY_NODE_MODE=${MAGNUM_VERIFY_NODE_MODE:-exact}
+case "${VERIFY_NODE_MODE}" in
+  exact) MINIMUM_READY_NODES=${MAGNUM_EXPECTED_INITIAL_NODES} ;;
+  bounds) MINIMUM_READY_NODES=$((MAGNUM_MASTER_COUNT + MAGNUM_MIN_NODE_COUNT)) ;;
+  *) log::die "MAGNUM_VERIFY_NODE_MODE must be exact or bounds" ;;
+esac
 
 log::step 1 "Confirming CSOC API reachability with the exact cluster kubeconfig"
 [[ -n "${API_ADDRESS}" ]] || log::die "Magnum did not report the CSOC API address"
 bash "${REPO_ROOT}/scripts/lib/kubernetes-reachability.sh" \
   --name "${MAGNUM_CLUSTER_NAME}" \
   --kubeconfig "${KUBECONFIG_FILE}" \
-  --minimum-ready "${MAGNUM_EXPECTED_INITIAL_NODES}" \
+  --minimum-ready "${MINIMUM_READY_NODES}" \
   --expected-endpoint "${API_ADDRESS}" \
   --timeout "${MAGNUM_VERIFY_TIMEOUT}s"
 
@@ -49,8 +55,15 @@ log::step 3 "Checking 100-GiB roots and default worker autoscaling bounds"
 STACK_ID=$(jq -r '.stack_id' <<<"${CLUSTER_JSON}")
 mapfile -t SERVER_IDS < <(openstack server list -f json \
   | jq -r --arg stack "${STACK_ID}" '.[] | select((.Name // .name // "") | contains($stack)) | (.ID // .id)')
-(( ${#SERVER_IDS[@]} == MAGNUM_EXPECTED_INITIAL_NODES )) \
-  || log::die "Expected ${MAGNUM_EXPECTED_INITIAL_NODES} Magnum servers, found ${#SERVER_IDS[@]}"
+if [[ "${VERIFY_NODE_MODE}" == exact ]]; then
+  (( ${#SERVER_IDS[@]} == MAGNUM_EXPECTED_INITIAL_NODES )) \
+    || log::die "Expected ${MAGNUM_EXPECTED_INITIAL_NODES} Magnum servers, found ${#SERVER_IDS[@]}"
+else
+  minimum_servers=$((MAGNUM_MASTER_COUNT + MAGNUM_MIN_NODE_COUNT))
+  maximum_servers=$((MAGNUM_MASTER_COUNT + MAGNUM_MAX_NODE_COUNT))
+  (( ${#SERVER_IDS[@]} >= minimum_servers && ${#SERVER_IDS[@]} <= maximum_servers )) \
+    || log::die "Magnum server count ${#SERVER_IDS[@]} is outside ${minimum_servers}..${maximum_servers}"
+fi
 for server_id in "${SERVER_IDS[@]}"; do
   SERVER_JSON=$(openstack server show "${server_id}" -f json)
   volume_id=$(jq -r '.volumes_attached[0].id // ."volumes_attached"[0].id // empty' <<<"${SERVER_JSON}")

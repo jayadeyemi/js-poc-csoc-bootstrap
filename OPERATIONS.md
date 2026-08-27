@@ -23,6 +23,11 @@ These containers can run simultaneously. GitOps itself does not depend on
 them: the in-cluster Argo controllers reconcile development default branches
 and production `release/prod` branches independently.
 
+Use `make containers-up`, `make containers-status`, and `make containers-stop`
+to manage every declared profile container. Starting all containers does not
+provision dormant profiles. The supported declarative rename, resize, and spec
+change matrix is in [iac/csoc/WORKFLOW.md](iac/csoc/WORKFLOW.md).
+
 Never create `PROFILE=prod` until the coordinated `release/prod` branches exist
 in bootstrap and app catalog, quota covers three `m3.quad` control planes plus
 workers, and the immutable sizing has been reviewed. Production deliberately

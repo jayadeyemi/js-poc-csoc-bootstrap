@@ -108,6 +108,18 @@ else
   ((pass += 1))
 fi
 
+FAKE_CLUSTER_EXISTS=true expect_pass "CSOC IaC plan reads owned state without mutation" \
+  bash "${REPO_ROOT}/scripts/operations/csoc/plan.sh"
+expect_fail "CSOC mutable reconcile requires exact cluster-name confirmation" \
+  bash "${REPO_ROOT}/scripts/operations/csoc/reconcile-mutable.sh" --confirm wrong-name
+FAKE_CLUSTER_EXISTS=true MAGNUM_WORKER_FLAVOR=m3.medium \
+  expect_fail "CSOC mutable reconcile rejects immutable spec drift" \
+  bash "${REPO_ROOT}/scripts/operations/csoc/reconcile-mutable.sh" \
+    --confirm js2-mgmt-cluster
+FAKE_CLUSTER_EXISTS=true expect_pass "CSOC mutable reconcile changes only reviewed worker bounds" \
+  bash "${REPO_ROOT}/scripts/operations/csoc/reconcile-mutable.sh" \
+    --confirm js2-mgmt-cluster
+
 printf '%s\n' \
   '{"status":"CREATE_IN_PROGRESS","health_status":"UNHEALTHY","status_reason":null,"updated_at":"1","node_addresses":["10.0.0.2"]}' \
   '{"status":"CREATE_COMPLETE","health_status":"HEALTHY","status_reason":null,"updated_at":"2","node_addresses":["10.0.0.2"]}' \
@@ -142,6 +154,9 @@ FAKE_KUBE_CAN_LIST_NODES=no \
   bash "${CHECKER}" --name js2-mgmt-cluster \
     --kubeconfig "${MAGNUM_KUBECONFIG_DIR}/js2-mgmt-cluster.yaml" --minimum-ready 2
 FAKE_CLUSTER_EXISTS=true expect_pass "readiness verifies nodes, DNS, roots, and bounds" \
+  bash "${REPO_ROOT}/scripts/bootstrap/magnum/verify.sh"
+FAKE_CLUSTER_EXISTS=true MAGNUM_VERIFY_NODE_MODE=bounds \
+  expect_pass "ongoing readiness accepts worker counts within autoscaling bounds" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/verify.sh"
 FAKE_CLUSTER_EXISTS=true FAKE_KUBE_UNINITIALIZED=true \
   expect_fail "readiness rejects cloud-provider-uninitialized taints" \

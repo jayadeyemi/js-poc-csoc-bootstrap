@@ -112,7 +112,23 @@ case "${CLUSTER_STATUS}" in
       --arg cluster_name "${MAGNUM_CLUSTER_NAME}" \
       --arg template_id "${MAGNUM_TEMPLATE_ID}" \
       --arg created_at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-      '{cluster_id:$cluster_id,cluster_name:$cluster_name,template_id:$template_id,created_at:$created_at}' \
+      --arg master_count "${MAGNUM_MASTER_COUNT}" \
+      --arg master_flavor "${MAGNUM_MASTER_FLAVOR}" \
+      --arg node_count "${MAGNUM_NODE_COUNT}" \
+      --arg worker_flavor "${MAGNUM_WORKER_FLAVOR}" \
+      --arg min_nodes "${MAGNUM_MIN_NODE_COUNT}" \
+      --arg max_nodes "${MAGNUM_MAX_NODE_COUNT}" \
+      --arg fixed_network_id "${MAGNUM_FIXED_NETWORK_ID}" \
+      --arg fixed_subnet_id "${MAGNUM_FIXED_SUBNET_ID}" \
+      --arg image_id "${MAGNUM_IMAGE_ID}" \
+      --arg boot_volume_size "${MAGNUM_BOOT_VOLUME_SIZE}" \
+      --arg keypair "${MAGNUM_KEYPAIR}" \
+      '{cluster_id:$cluster_id,cluster_name:$cluster_name,template_id:$template_id,created_at:$created_at,
+        declaredSpec:{masterCount:($master_count|tonumber),masterFlavor:$master_flavor,
+          nodeCount:($node_count|tonumber),workerFlavor:$worker_flavor,
+          minNodes:($min_nodes|tonumber),maxNodes:($max_nodes|tonumber),
+          fixedNetworkID:$fixed_network_id,fixedSubnetID:$fixed_subnet_id,
+          imageID:$image_id,bootVolumeSize:($boot_volume_size|tonumber),keypair:$keypair}}' \
       >"${STATE_TMP}"
     chmod 600 "${STATE_TMP}"
     mv "${STATE_TMP}" "${STATE_FILE}"

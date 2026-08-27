@@ -11,10 +11,12 @@ export OS_CLOUD
 export CSOC_PROFILE = $(PROFILE)
 
 .PHONY: help \
-	validate security-scan preflight \
+	validate validate-clusters security-scan preflight \
 	container-build container-run container-up container-shell container-status container-stop \
+	containers-up containers-status containers-stop \
 	magnum-templates magnum-provision magnum-wait magnum-kubeconfig \
 	magnum-configure-nodegroup magnum-diagnose magnum-verify magnum-verify-autoscaling \
+	csoc-plan csoc-resize clusters-verify clusters-verify-all \
 	capi-secret \
 	argocd-install argocd-manual-smoke argocd-bootstrap argocd-status \
 	destroy-spoke \
@@ -26,6 +28,9 @@ help: ## Show available targets
 
 validate: ## Run non-destructive static validation
 	bash scripts/tools/validate.sh
+
+validate-clusters: ## Validate every CSOC profile and every declared spoke
+	bash scripts/tools/validate-clusters.sh
 
 security-scan: ## Scan publishable files for credential material
 	bash scripts/tools/scan-secrets.sh
@@ -52,6 +57,15 @@ container-status: ## Show profile operator container status (PROFILE=dev|prod)
 container-stop: ## Stop profile operator container (PROFILE=dev|prod)
 	bash scripts/host/container/manage.sh stop
 
+containers-up: ## Start one isolated operator container for every CSOC profile
+	bash scripts/host/container/manage-all.sh up
+
+containers-status: ## Show every profile operator container
+	bash scripts/host/container/manage-all.sh status
+
+containers-stop: ## Stop every profile operator container
+	bash scripts/host/container/manage-all.sh stop
+
 # ── Magnum ────────────────────────────────────────────────────────────────────
 magnum-templates: ## Save a timestamped inventory of visible Magnum templates
 	bash scripts/operations/magnum/inventory-templates.sh
@@ -76,6 +90,19 @@ magnum-verify: ## Verify guide-exact management-cluster readiness
 
 magnum-verify-autoscaling: ## Exercise management workers within bounds
 	bash scripts/bootstrap/magnum/verify-autoscaling.sh
+
+# ── Declarative CSOC changes ─────────────────────────────────────────────────
+csoc-plan: ## Read-only diff of PROFILE IaC against its owned Magnum cluster
+	bash scripts/operations/csoc/plan.sh
+
+csoc-resize: ## Apply only reviewed worker bounds (CONFIRM=<cluster-name>)
+	bash scripts/operations/csoc/reconcile-mutable.sh --confirm "$${CONFIRM:-}"
+
+clusters-verify: ## Live readiness validation for one CSOC and all its spokes
+	bash scripts/operations/csoc/verify-all.sh
+
+clusters-verify-all: ## Run live validation in a container for every provisioned CSOC
+	bash scripts/host/verify-all-clusters.sh
 
 # ── CAPI ──────────────────────────────────────────────────────────────────────
 capi-secret: ## Load/update restricted CAPO/ORC and workload secrets (IDENTITY=test-poc)

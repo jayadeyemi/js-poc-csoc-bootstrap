@@ -34,6 +34,7 @@ while IFS= read -r -d '' script; do
 done < <(find "${REPO_ROOT}" -type f \( -name '*.sh' -o -name '*.bash' \) \
   -not -path '*/.git/*' -print0)
 bash "${REPO_ROOT}/scripts/tools/scan-secrets.sh"
+bash "${REPO_ROOT}/scripts/tools/validate-clusters.sh"
 
 retired_pattern="js-poc-csoc-platform"'-apis|csoc-'"platform|hello-"'csoc'
 if rg --line-number "${retired_pattern}" \

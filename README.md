@@ -23,6 +23,9 @@ make container-build   # build the pinned management image
 make bootstrap         # full pipeline A–G (idempotent)
 make container-up PROFILE=dev
 make container-up PROFILE=prod
+make containers-status # show operator containers for every profile
+make csoc-plan PROFILE=dev
+make clusters-verify PROFILE=dev
 ```
 
 Before using these commands, follow [FIRST_INSTALL.md](FIRST_INSTALL.md). It is
@@ -92,7 +95,11 @@ Neither file is tracked. Copy and fill in the examples, then `chmod 600` both fi
 
 ```bash
 make validate   # static Bash/YAML/JSON, Kustomize, Helm, secret-scan, and lifecycle tests
+make validate-clusters # every management profile and every declared spoke
+make clusters-verify-all # every provisioned CSOC and all of its active spokes
 ```
 
 The validation gate is the authoritative local check; GitHub Actions is not used.
+See [iac/csoc/WORKFLOW.md](iac/csoc/WORKFLOW.md) for the supported rename,
+resize, immutable-spec replacement, all-container, and all-cluster workflows.
 For retirement and recovery procedures, see [OPERATIONS.md](OPERATIONS.md).
