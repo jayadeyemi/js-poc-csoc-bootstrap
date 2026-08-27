@@ -30,7 +30,7 @@ profile container:
 
 ```bash
 make validate-clusters
-make csoc-plan PROFILE=dev
+make csoc-plan PROFILE=staging
 ```
 
 The plan labels each difference as `no-op`, `in-place`, `observe-only`, or
@@ -38,8 +38,8 @@ The plan labels each difference as `no-op`, `in-place`, `observe-only`, or
 in-place target:
 
 ```bash
-make csoc-resize PROFILE=dev CONFIRM=js2-mgmt-cluster-2
-make clusters-verify PROFILE=dev
+make csoc-resize PROFILE=staging CONFIRM=csoc-staging
+make clusters-verify PROFILE=staging
 ```
 
 `csoc-resize` validates every declared cluster, runs read-only OpenStack and
@@ -49,8 +49,8 @@ changes an immutable field, or submits a create/delete request.
 
 ## Spoke change workflow
 
-For an active account, edit only these normal mutable fields in
-`accounts/<identity>/cluster.yaml`:
+For an active tuple, edit only these normal mutable fields in
+`environments/<owner>/accounts/<account>/<app>/<environment>/cluster.yaml`:
 
 ```yaml
 spec:

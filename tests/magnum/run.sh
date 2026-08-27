@@ -19,7 +19,7 @@ export MAGNUM_CLOUDS_YAML="${TEST_ROOT}/credentials/magnum-clouds.yaml"
 export RUNTIME_CLOUDS_YAML="${TEST_ROOT}/credentials/runtime-clouds.yaml"
 export MAGNUM_STATE_FILE="${TEST_ROOT}/state/magnum-cluster.json"
 export MAGNUM_KUBECONFIG_DIR="${TEST_ROOT}/home/.kube"
-export MAGNUM_CLUSTER_NAME=js2-mgmt-cluster
+export MAGNUM_CLUSTER_NAME=csoc-dev
 export FAKE_CREATE_LOG="${TEST_ROOT}/create.log"
 export FAKE_CONFIG_LOG="${TEST_ROOT}/config.log"
 export FAKE_DELETE_LOG="${TEST_ROOT}/delete.log"
@@ -54,12 +54,12 @@ expect_pass "cluster name supports an isolated environment override" \
   bash -c 'MAGNUM_CLUSTER_NAME=js2-mgmt-cluster-2; export MAGNUM_CLUSTER_NAME; source "$1"; [[ "$MAGNUM_CLUSTER_NAME" == js2-mgmt-cluster-2 ]]' \
   _ "${REPO_ROOT}/iac/magnum/cluster.env"
 
-expect_pass "dev profile binds the existing CSOC ownership and default branches" \
-  bash -c 'unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR; source "$1"; csoc::load_profile "$2"; [[ "$MAGNUM_CLUSTER_NAME" == js2-mgmt-cluster-2 && "$MAGNUM_STATE_FILE" == "$2/.state/magnum-cluster-2.json" && "$CSOC_CATALOG_REVISION" == main && "$CSOC_FLEET_ENABLED" == true ]]' \
+expect_pass "dev profile isolates graph development and disables fleet" \
+  bash -c 'unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR; source "$1"; csoc::load_profile "$2"; [[ "$MAGNUM_CLUSTER_NAME" == csoc-dev && "$MAGNUM_STATE_FILE" == "$2/.state/csoc/dev/magnum-cluster.json" && "$CSOC_CATALOG_REVISION" == environment/dev && "$CSOC_FLEET_ENABLED" == false && "$MAGNUM_BOOT_VOLUME_SIZE" == 40 ]]' \
   _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}"
 
-expect_pass "prod profile freezes an HA control plane and disables fleet" \
-  bash -c 'unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR; CSOC_PROFILE=prod; export CSOC_PROFILE; source "$1"; csoc::load_profile "$2"; [[ "$MAGNUM_MASTER_COUNT" == 3 && "$MAGNUM_MASTER_FLAVOR" == m3.quad && "$CSOC_CATALOG_REVISION" == release/prod && "$CSOC_FLEET_ENABLED" == false ]]' \
+expect_pass "prod profile freezes an HA control plane and coordinated branch" \
+  bash -c 'unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR; CSOC_PROFILE=prod; export CSOC_PROFILE; source "$1"; csoc::load_profile "$2"; [[ "$MAGNUM_MASTER_COUNT" == 3 && "$MAGNUM_MASTER_FLAVOR" == m3.small && "$CSOC_CATALOG_REVISION" == environment/prod && "$CSOC_FLEET_ENABLED" == true && "$MAGNUM_BOOT_VOLUME_SIZE" == 60 ]]' \
   _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}"
 
 expect_pass "preflight accepts separated credentials and exact infrastructure" \
@@ -80,7 +80,7 @@ FAKE_SUBNET_NETWORK_ID=wrong expect_fail "preflight rejects wrong subnet relatio
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
 FAKE_MAX_INSTANCES=1 expect_fail "preflight rejects insufficient compute quota" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
-FAKE_VOLUME_SIZE=49900 expect_fail "preflight rejects less than 200 GiB volume headroom" \
+FAKE_VOLUME_SIZE=49950 expect_fail "preflight rejects less than 80 GiB volume headroom" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
 FAKE_AMBIGUOUS=true expect_fail "preflight rejects ambiguous cluster ownership" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
@@ -92,11 +92,11 @@ expect_pass "provision submits the guide-exact create request" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/provision.sh"
 for required in \
   '--cluster-template 284de191-b8ea-4dae-9046-6ab982bd1c3a' \
-  '--master-count 1' '--node-count 1' '--master-flavor m3.quad' '--flavor m3.quad' \
+  '--master-count 1' '--node-count 1' '--master-flavor m3.small' '--flavor m3.quad' \
   '--fixed-network auto_allocated_network' '--fixed-subnet auto_allocated_subnet_v4' \
   '--floating-ip-enabled' '--master-lb-enabled' '--merge-labels' \
-  '--labels boot_volume_size=100' '--labels auto_scaling_enabled=true' \
-  '--labels min_node_count=1' '--labels max_node_count=2'; do
+  '--labels boot_volume_size=40' '--labels auto_scaling_enabled=false' \
+  '--labels min_node_count=1' '--labels max_node_count=1'; do
   grep -F -- "${required}" "${FAKE_CREATE_LOG}" >/dev/null \
     || { printf 'not ok - create request missing %s\n' "${required}"; ((fail += 1)); }
 done
@@ -112,13 +112,13 @@ FAKE_CLUSTER_EXISTS=true expect_pass "CSOC IaC plan reads owned state without mu
   bash "${REPO_ROOT}/scripts/operations/csoc/plan.sh"
 expect_fail "CSOC mutable reconcile requires exact cluster-name confirmation" \
   bash "${REPO_ROOT}/scripts/operations/csoc/reconcile-mutable.sh" --confirm wrong-name
-FAKE_CLUSTER_EXISTS=true MAGNUM_WORKER_FLAVOR=m3.medium \
-  expect_fail "CSOC mutable reconcile rejects immutable spec drift" \
+expect_fail "CSOC mutable reconcile rejects immutable spec drift" \
+  env FAKE_CLUSTER_EXISTS=true MAGNUM_WORKER_FLAVOR=m3.medium \
   bash "${REPO_ROOT}/scripts/operations/csoc/reconcile-mutable.sh" \
-    --confirm js2-mgmt-cluster
+    --confirm csoc-dev
 FAKE_CLUSTER_EXISTS=true expect_pass "CSOC mutable reconcile changes only reviewed worker bounds" \
   bash "${REPO_ROOT}/scripts/operations/csoc/reconcile-mutable.sh" \
-    --confirm js2-mgmt-cluster
+    --confirm csoc-dev
 
 printf '%s\n' \
   '{"status":"CREATE_IN_PROGRESS","health_status":"UNHEALTHY","status_reason":null,"updated_at":"1","node_addresses":["10.0.0.2"]}' \
@@ -138,21 +138,21 @@ grep -F -- '--use-certificate' "${FAKE_CONFIG_LOG}" >/dev/null
 grep -F -- '--output-certs' "${FAKE_CONFIG_LOG}" >/dev/null
 CHECKER="${REPO_ROOT}/scripts/lib/kubernetes-reachability.sh"
 expect_pass "shared checker confirms authenticated HTTPS reachability" \
-  bash "${CHECKER}" --name js2-mgmt-cluster \
-    --kubeconfig "${MAGNUM_KUBECONFIG_DIR}/js2-mgmt-cluster.yaml" \
+  bash "${CHECKER}" --name csoc-dev \
+    --kubeconfig "${MAGNUM_KUBECONFIG_DIR}/csoc-dev.yaml" \
     --minimum-ready 2 --expected-endpoint https://10.0.0.1:6443
 FAKE_KUBE_SERVER=http://10.0.0.1:6443 \
   expect_fail "shared checker rejects a non-HTTPS API endpoint" \
-  bash "${CHECKER}" --name js2-mgmt-cluster \
-    --kubeconfig "${MAGNUM_KUBECONFIG_DIR}/js2-mgmt-cluster.yaml" --minimum-ready 2
+  bash "${CHECKER}" --name csoc-dev \
+    --kubeconfig "${MAGNUM_KUBECONFIG_DIR}/csoc-dev.yaml" --minimum-ready 2
 FAKE_KUBE_READY_COUNT=1 \
   expect_fail "shared checker rejects insufficient Ready nodes" \
-  bash "${CHECKER}" --name js2-mgmt-cluster \
-    --kubeconfig "${MAGNUM_KUBECONFIG_DIR}/js2-mgmt-cluster.yaml" --minimum-ready 2
+  bash "${CHECKER}" --name csoc-dev \
+    --kubeconfig "${MAGNUM_KUBECONFIG_DIR}/csoc-dev.yaml" --minimum-ready 2
 FAKE_KUBE_CAN_LIST_NODES=no \
   expect_fail "shared checker rejects credentials that cannot list nodes" \
-  bash "${CHECKER}" --name js2-mgmt-cluster \
-    --kubeconfig "${MAGNUM_KUBECONFIG_DIR}/js2-mgmt-cluster.yaml" --minimum-ready 2
+  bash "${CHECKER}" --name csoc-dev \
+    --kubeconfig "${MAGNUM_KUBECONFIG_DIR}/csoc-dev.yaml" --minimum-ready 2
 FAKE_CLUSTER_EXISTS=true expect_pass "readiness verifies nodes, DNS, roots, and bounds" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/verify.sh"
 FAKE_CLUSTER_EXISTS=true MAGNUM_VERIFY_NODE_MODE=bounds \
@@ -166,14 +166,16 @@ unlink "${FAKE_NODEGROUP_UPDATE_LOG}" 2>/dev/null || true
 FAKE_CLUSTER_EXISTS=true FAKE_NODEGROUP_MAX=null MAGNUM_NODEGROUP_UPDATE_TIMEOUT=5 \
   MAGNUM_WAIT_INTERVAL=0 expect_pass "default worker API bounds are reconciled idempotently" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/configure-nodegroup.sh"
-grep -F -- '/max_node_count=2' "${FAKE_NODEGROUP_UPDATE_LOG}" >/dev/null
+grep -F -- '/max_node_count=1' "${FAKE_NODEGROUP_UPDATE_LOG}" >/dev/null
 
 rm -f "${FAKE_AUTOSCALE_STATE}"
-FAKE_CLUSTER_EXISTS=true MAGNUM_WAIT_INTERVAL=0 \
+FAKE_CLUSTER_EXISTS=true MAGNUM_AUTO_SCALING_ENABLED=true MAGNUM_MAX_NODE_COUNT=2 \
+  MAGNUM_WAIT_INTERVAL=0 \
   MAGNUM_AUTOSCALE_UP_TIMEOUT=5 MAGNUM_AUTOSCALE_DOWN_TIMEOUT=5 \
   expect_pass "autoscaling acceptance does not require an in-cluster provider deployment" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/verify-autoscaling.sh"
-FAKE_CLUSTER_EXISTS=true FAKE_AUTO_SCALING_ENABLED=false \
+FAKE_CLUSTER_EXISTS=true MAGNUM_AUTO_SCALING_ENABLED=true MAGNUM_MAX_NODE_COUNT=2 \
+  FAKE_AUTO_SCALING_ENABLED=false \
   expect_fail "autoscaling acceptance rejects a disabled Magnum cluster label" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/verify-autoscaling.sh"
 

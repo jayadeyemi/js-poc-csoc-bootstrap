@@ -23,7 +23,11 @@ bash "${REPO_ROOT}/scripts/bootstrap/magnum/configure-nodegroup.sh"
 log::step D "Retrieve certificate kubeconfig and verify the management cluster"
 bash "${REPO_ROOT}/scripts/bootstrap/magnum/kubeconfig.sh"
 bash "${REPO_ROOT}/scripts/bootstrap/magnum/verify.sh"
-bash "${REPO_ROOT}/scripts/bootstrap/magnum/verify-autoscaling.sh"
+if [[ "${MAGNUM_AUTO_SCALING_ENABLED}" == true ]]; then
+  bash "${REPO_ROOT}/scripts/bootstrap/magnum/verify-autoscaling.sh"
+else
+  log::info "Autoscaling acceptance is deferred; ${CSOC_PROFILE} uses fixed worker bounds"
+fi
 log::step E "Install Argo CD"
 bash "${REPO_ROOT}/scripts/bootstrap/argocd/install.sh"
 log::step E "Manually validate manifests before enabling Argo reconciliation"
@@ -31,11 +35,15 @@ bash "${REPO_ROOT}/scripts/bootstrap/argocd/manual-smoke-test.sh"
 log::step F "Load one separate restricted credential for each active spoke account"
 FLEET_ROOT="${FLEET_ROOT:-$(cd "${REPO_ROOT}/../js-poc-csoc-fleet" && pwd)}"
 if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
-  mapfile -t active_accounts < <(yq -r '.resources[]?' "${FLEET_ROOT}/accounts/kustomization.yaml")
-  for identity in "${active_accounts[@]}"; do
+  mapfile -t active_identities < <(
+    find "${FLEET_ROOT}/${CSOC_FLEET_PATH}/accounts" -type f \
+      -name identity-config.yaml -print0 \
+      | xargs -0 -r yq -r '.metadata.name' | sort -u
+  )
+  for identity in "${active_identities[@]}"; do
     bash "${REPO_ROOT}/scripts/bootstrap/credentials/create-runtime-cloud-secret.sh" "${identity}"
   done
-  if (( ${#active_accounts[@]} == 0 )); then
+  if (( ${#active_identities[@]} == 0 )); then
     log::info "No spoke accounts are active; no spoke credentials were loaded"
   fi
 else

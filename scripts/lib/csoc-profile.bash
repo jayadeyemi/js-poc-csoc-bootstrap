@@ -23,6 +23,10 @@ csoc::load_profile() {
     || { printf 'Profile identity mismatch in %s\n' "${profile_file}" >&2; return 65; }
   [[ "${CSOC_FLEET_ENABLED}" == true || "${CSOC_FLEET_ENABLED}" == false ]] \
     || { printf 'CSOC_FLEET_ENABLED must be true or false\n' >&2; return 65; }
+  [[ "${CSOC_FLEET_PATH}" == "environments/${profile}" ]] \
+    || { printf 'CSOC_FLEET_PATH must match the selected profile\n' >&2; return 65; }
+  [[ "${MAGNUM_CLUSTER_NAME}" == "csoc-${profile}" ]] \
+    || { printf 'MAGNUM_CLUSTER_NAME must be csoc-%s\n' "${profile}" >&2; return 65; }
 
   CSOC_PROFILE=${profile}
   MAGNUM_STATE_FILE=${MAGNUM_STATE_FILE:-"${repo_root}/${MAGNUM_STATE_FILE_REL}"}
@@ -31,8 +35,10 @@ csoc::load_profile() {
 
   export CSOC_PROFILE CSOC_PROFILE_NAME CSOC_FLEET_ENABLED
   export CSOC_BOOTSTRAP_REVISION CSOC_CATALOG_REVISION CSOC_FLEET_REVISION
+  export CSOC_APPLICATION_DIR_REL CSOC_FLEET_PATH
   export MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR CSOC_ARGO_ROOT_MANIFEST
   export MAGNUM_CLUSTER_NAME MAGNUM_MASTER_COUNT MAGNUM_MASTER_FLAVOR
   export MAGNUM_NODE_COUNT MAGNUM_WORKER_FLAVOR MAGNUM_MIN_NODE_COUNT
   export MAGNUM_MAX_NODE_COUNT MAGNUM_EXPECTED_INITIAL_NODES
+  export MAGNUM_BOOT_VOLUME_SIZE MAGNUM_AUTO_SCALING_ENABLED
 }

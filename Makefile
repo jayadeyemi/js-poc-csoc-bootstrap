@@ -4,7 +4,7 @@ MAKEFLAGS     += --no-print-directory
 IMAGE_NAME  ?= jetstream2-mgmt
 IMAGE_TAG   ?= latest
 OS_CLOUD    ?= openstack
-PROFILE     ?= dev
+PROFILE     ?= $(notdir $(abspath ..))
 export JETSTREAM_IMAGE_NAME = $(IMAGE_NAME)
 export JETSTREAM_IMAGE_TAG  = $(IMAGE_TAG)
 export OS_CLOUD
@@ -45,16 +45,16 @@ container-build: ## Build the management container image
 container-run: ## Run the management container interactively
 	bash scripts/host/container/run.sh
 
-container-up: ## Start persistent operator container (PROFILE=dev|prod)
+container-up: ## Start persistent operator container (PROFILE=dev|staging|prod)
 	bash scripts/host/container/manage.sh up
 
-container-shell: ## Open the profile operator container (PROFILE=dev|prod)
+container-shell: ## Open the profile operator container (PROFILE=dev|staging|prod)
 	bash scripts/host/container/manage.sh shell
 
-container-status: ## Show profile operator container status (PROFILE=dev|prod)
+container-status: ## Show profile operator container status (PROFILE=dev|staging|prod)
 	bash scripts/host/container/manage.sh status
 
-container-stop: ## Stop profile operator container (PROFILE=dev|prod)
+container-stop: ## Stop profile operator container (PROFILE=dev|staging|prod)
 	bash scripts/host/container/manage.sh stop
 
 containers-up: ## Start one isolated operator container for every CSOC profile

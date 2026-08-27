@@ -9,21 +9,11 @@ spec:
   project: rgds
   source:
     repoURL: https://github.com/jayadeyemi/js-poc-csoc-app-catalog
-    targetRevision: release/prod
+    targetRevision: environment/prod
     path: rgds
   destination:
     server: https://kubernetes.default.svc
     namespace: kro-system
   syncPolicy:
-    automated:
-      prune: false
-      selfHeal: true
-    syncOptions:
-      - ServerSideApply=true
-      - SkipDryRunOnMissingResource=true
-    retry:
-      limit: 10
-      backoff:
-        duration: 10s
-        factor: 2
-        maxDuration: 3m
+    automated: {prune: false, selfHeal: true}
+    syncOptions: [ServerSideApply=true, SkipDryRunOnMissingResource=true]
