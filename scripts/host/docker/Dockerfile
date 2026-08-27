@@ -13,7 +13,7 @@ ARG HEAT_CLIENT_VERSION
 # Install system deps and OpenStack CLI (no interactive prompts)
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3-venv curl git jq ripgrep gettext-base ca-certificates gnupg \
+        python3-venv curl git jq make ripgrep gettext-base ca-certificates gnupg \
     && python3 -m venv /opt/openstack \
     && /opt/openstack/bin/pip install --no-cache-dir \
         "python-openstackclient==${OPENSTACK_CLIENT_VERSION}" \
