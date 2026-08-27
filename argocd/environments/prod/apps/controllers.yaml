@@ -9,15 +9,12 @@ spec:
   project: rgds
   source:
     repoURL: https://github.com/jayadeyemi/js-poc-csoc-bootstrap
-    targetRevision: release/prod
+    targetRevision: environment/prod
     path: controllers
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
   syncPolicy:
-    automated:
-      prune: false
-      selfHeal: true
-    syncOptions:
-      - ServerSideApply=true
+    automated: {prune: false, selfHeal: true}
+    syncOptions: [ServerSideApply=true]
   revisionHistoryLimit: 3

@@ -1,19 +1,23 @@
-# Existing development CSOC. These ownership paths intentionally point to the
-# already-provisioned js2-mgmt-cluster-2 and must not be reused by production.
+# Graph-development CSOC. It installs controllers and RGDs only; it must never
+# reconcile fleet instances.
 CSOC_PROFILE_NAME=dev
-CSOC_FLEET_ENABLED=true
-CSOC_BOOTSTRAP_REVISION=master
-CSOC_CATALOG_REVISION=main
-CSOC_FLEET_REVISION=main
-CSOC_ARGO_ROOT_MANIFEST_REL=argocd/app-of-apps.yaml
+CSOC_FLEET_ENABLED=false
+CSOC_BOOTSTRAP_REVISION=environment/dev
+CSOC_CATALOG_REVISION=environment/dev
+CSOC_FLEET_REVISION=environment/dev
+CSOC_ARGO_ROOT_MANIFEST_REL=iac/csoc/profiles/dev-app-of-apps.yaml
+CSOC_APPLICATION_DIR_REL=argocd/environments/dev/apps
+CSOC_FLEET_PATH=environments/dev
 
-MAGNUM_CLUSTER_NAME=${MAGNUM_CLUSTER_NAME:-js2-mgmt-cluster-2}
-MAGNUM_STATE_FILE_REL=.state/magnum-cluster-2.json
-MAGNUM_KUBECONFIG_DIR_REL=.state/kubeconfigs
+MAGNUM_CLUSTER_NAME=${MAGNUM_CLUSTER_NAME:-csoc-dev}
+MAGNUM_STATE_FILE_REL=.state/csoc/dev/magnum-cluster.json
+MAGNUM_KUBECONFIG_DIR_REL=.state/csoc/dev/kubeconfigs
 MAGNUM_MASTER_COUNT=${MAGNUM_MASTER_COUNT:-1}
-MAGNUM_MASTER_FLAVOR=${MAGNUM_MASTER_FLAVOR:-m3.quad}
+MAGNUM_MASTER_FLAVOR=${MAGNUM_MASTER_FLAVOR:-m3.small}
 MAGNUM_NODE_COUNT=${MAGNUM_NODE_COUNT:-1}
 MAGNUM_WORKER_FLAVOR=${MAGNUM_WORKER_FLAVOR:-m3.quad}
+MAGNUM_BOOT_VOLUME_SIZE=${MAGNUM_BOOT_VOLUME_SIZE:-40}
+MAGNUM_AUTO_SCALING_ENABLED=${MAGNUM_AUTO_SCALING_ENABLED:-false}
 MAGNUM_MIN_NODE_COUNT=${MAGNUM_MIN_NODE_COUNT:-1}
-MAGNUM_MAX_NODE_COUNT=${MAGNUM_MAX_NODE_COUNT:-2}
+MAGNUM_MAX_NODE_COUNT=${MAGNUM_MAX_NODE_COUNT:-1}
 MAGNUM_EXPECTED_INITIAL_NODES=${MAGNUM_EXPECTED_INITIAL_NODES:-2}

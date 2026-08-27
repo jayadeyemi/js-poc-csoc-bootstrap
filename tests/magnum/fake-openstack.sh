@@ -5,6 +5,12 @@ set -euo pipefail
 args="$*"
 project="${FAKE_PROJECT_ID:-53f449a040d14cef8512b69e4ad521cd}"
 cluster_id="${FAKE_CLUSTER_ID:-11111111-2222-3333-4444-555555555555}"
+cluster_name="${MAGNUM_CLUSTER_NAME:-csoc-dev}"
+master_flavor="${FAKE_MASTER_FLAVOR:-m3.small}"
+worker_flavor="${FAKE_WORKER_FLAVOR:-m3.quad}"
+boot_volume_size="${FAKE_BOOT_VOLUME_SIZE:-40}"
+min_nodes="${MAGNUM_MIN_NODE_COUNT:-1}"
+max_nodes="${MAGNUM_MAX_NODE_COUNT:-1}"
 
 case "${args}" in
   "configuration show -f json")
@@ -68,11 +74,11 @@ case "${args}" in
   "loadbalancer list -f json") printf '[]\n' ;;
   "coe cluster list -f json")
     if [[ "${FAKE_AMBIGUOUS:-false}" == true ]]; then
-      printf '[{"name":"js2-mgmt-cluster","uuid":"a"},{"name":"js2-mgmt-cluster","uuid":"b"}]\n'
+      printf '[{"name":"%s","uuid":"a"},{"name":"%s","uuid":"b"}]\n' "${cluster_name}" "${cluster_name}"
     elif [[ -n "${FAKE_CREATE_LOG:-}" && -s "${FAKE_CREATE_LOG}" ]]; then
-      printf '[{"name":"js2-mgmt-cluster","uuid":"%s"}]\n' "${cluster_id}"
+      printf '[{"name":"%s","uuid":"%s"}]\n' "${cluster_name}" "${cluster_id}"
     elif [[ "${FAKE_CLUSTER_EXISTS:-false}" == true ]]; then
-      printf '[{"name":"js2-mgmt-cluster","uuid":"%s"}]\n' "${cluster_id}"
+      printf '[{"name":"%s","uuid":"%s"}]\n' "${cluster_name}" "${cluster_id}"
     else
       printf '[]\n'
     fi
@@ -98,7 +104,7 @@ case "${args}" in
     ;;
   coe\ cluster\ show*)
     if [[ "${args}" == *"-f value -c name"* ]]; then
-      printf 'js2-mgmt-cluster\n'
+      printf '%s\n' "${cluster_name}"
     elif [[ "${args}" == *"-f value -c status"* ]]; then
       printf '%s\n' "${FAKE_CLUSTER_STATUS:-CREATE_COMPLETE}"
     elif [[ -n "${FAKE_WAIT_SEQUENCE:-}" && -f "${FAKE_WAIT_SEQUENCE}" ]]; then
@@ -110,22 +116,24 @@ case "${args}" in
       [[ -n "${line}" ]] || line=$(tail -n 1 "${FAKE_WAIT_SEQUENCE}")
       printf '%s\n' "${line}"
     else
-      printf '{"uuid":"%s","name":"js2-mgmt-cluster","cluster_template_id":"284de191-b8ea-4dae-9046-6ab982bd1c3a","fixed_network":"auto_allocated_network","fixed_subnet":"auto_allocated_subnet_v4","keypair":"jetstream-CSOC-POC","status":"%s","health_status":"%s","status_reason":null,"updated_at":"2099-01-01T00:00:00Z","stack_id":"js2-stack","api_address":"https://10.0.0.1:6443","node_addresses":["10.0.0.2"],"master_addresses":["10.0.0.1"],"master_count":1,"master_flavor_id":"m3.quad","labels":{"boot_volume_size":"100","auto_scaling_enabled":"%s","min_node_count":"1","max_node_count":"2"}}\n' \
-        "${cluster_id}" "${FAKE_CLUSTER_STATUS:-CREATE_COMPLETE}" "${FAKE_CLUSTER_HEALTH:-HEALTHY}" \
-        "${FAKE_AUTO_SCALING_ENABLED:-true}"
+      printf '{"uuid":"%s","name":"%s","cluster_template_id":"284de191-b8ea-4dae-9046-6ab982bd1c3a","fixed_network":"auto_allocated_network","fixed_subnet":"auto_allocated_subnet_v4","keypair":"jetstream-CSOC-POC","status":"%s","health_status":"%s","status_reason":null,"updated_at":"2099-01-01T00:00:00Z","stack_id":"js2-stack","api_address":"https://10.0.0.1:6443","node_addresses":["10.0.0.2"],"master_addresses":["10.0.0.1"],"master_count":1,"master_flavor_id":"%s","labels":{"boot_volume_size":"%s","auto_scaling_enabled":"%s","min_node_count":"%s","max_node_count":"%s"}}\n' \
+        "${cluster_id}" "${cluster_name}" "${FAKE_CLUSTER_STATUS:-CREATE_COMPLETE}" \
+        "${FAKE_CLUSTER_HEALTH:-HEALTHY}" "${master_flavor}" "${boot_volume_size}" \
+        "${FAKE_AUTO_SCALING_ENABLED:-${MAGNUM_AUTO_SCALING_ENABLED:-false}}" \
+        "${min_nodes}" "${max_nodes}"
     fi
     ;;
   coe\ nodegroup\ show*)
     if [[ "${args}" == *" default-master "* ]]; then
-      printf '{"name":"default-master","node_count":1,"flavor_id":"m3.quad","image_id":"ubuntu-jammy-kube-v1.34.8-260518-1604","status":"CREATE_COMPLETE"}\n'
+      printf '{"name":"default-master","node_count":1,"flavor_id":"%s","image_id":"ubuntu-jammy-kube-v1.34.8-260518-1604","status":"CREATE_COMPLETE"}\n' "${master_flavor}"
     elif [[ -n "${FAKE_AUTOSCALE_STATE:-}" && -f "${FAKE_AUTOSCALE_STATE}" \
        && $(<"${FAKE_AUTOSCALE_STATE}") == up ]]; then
-      printf '{"name":"default-worker","node_count":2,"min_node_count":1,"max_node_count":2,"flavor_id":"m3.quad","image_id":"ubuntu-jammy-kube-v1.34.8-260518-1604","status":"UPDATE_COMPLETE"}\n'
+      printf '{"name":"default-worker","node_count":2,"min_node_count":1,"max_node_count":2,"flavor_id":"%s","image_id":"ubuntu-jammy-kube-v1.34.8-260518-1604","status":"UPDATE_COMPLETE"}\n' "${worker_flavor}"
     elif [[ -n "${FAKE_NODEGROUP_UPDATE_LOG:-}" && -s "${FAKE_NODEGROUP_UPDATE_LOG}" ]]; then
-      printf '{"name":"default-worker","node_count":1,"min_node_count":1,"max_node_count":2,"flavor_id":"m3.quad","image_id":"ubuntu-jammy-kube-v1.34.8-260518-1604","status":"UPDATE_COMPLETE"}\n'
+      printf '{"name":"default-worker","node_count":1,"min_node_count":%s,"max_node_count":%s,"flavor_id":"%s","image_id":"ubuntu-jammy-kube-v1.34.8-260518-1604","status":"UPDATE_COMPLETE"}\n' "${min_nodes}" "${max_nodes}" "${worker_flavor}"
     else
-      printf '{"name":"default-worker","node_count":1,"min_node_count":1,"max_node_count":%s,"flavor_id":"m3.quad","image_id":"ubuntu-jammy-kube-v1.34.8-260518-1604","status":"CREATE_COMPLETE"}\n' \
-        "${FAKE_NODEGROUP_MAX:-2}"
+      printf '{"name":"default-worker","node_count":1,"min_node_count":%s,"max_node_count":%s,"flavor_id":"%s","image_id":"ubuntu-jammy-kube-v1.34.8-260518-1604","status":"CREATE_COMPLETE"}\n' \
+        "${min_nodes}" "${FAKE_NODEGROUP_MAX:-${max_nodes}}" "${worker_flavor}"
     fi
     ;;
   coe\ nodegroup\ update*)
@@ -138,6 +146,6 @@ case "${args}" in
     ;;
   "server show server-1 -f json") printf '{"volumes_attached":[{"id":"volume-1"}]}\n' ;;
   "server show server-2 -f json") printf '{"volumes_attached":[{"id":"volume-2"}]}\n' ;;
-  volume\ show*) printf '{"size":100}\n' ;;
+  volume\ show*) printf '{"size":%s}\n' "${boot_volume_size}" ;;
   *) printf 'Unhandled fake openstack command: %s\n' "${args}" >&2; exit 64 ;;
 esac

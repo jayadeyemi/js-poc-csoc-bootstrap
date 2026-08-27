@@ -35,8 +35,9 @@ for profile in "${profiles[@]}"; do
     unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR
     unset MAGNUM_MASTER_COUNT MAGNUM_MASTER_FLAVOR MAGNUM_NODE_COUNT
     unset MAGNUM_WORKER_FLAVOR MAGNUM_MIN_NODE_COUNT MAGNUM_MAX_NODE_COUNT
-    unset MAGNUM_EXPECTED_INITIAL_NODES
+    unset MAGNUM_EXPECTED_INITIAL_NODES MAGNUM_BOOT_VOLUME_SIZE MAGNUM_AUTO_SCALING_ENABLED
     unset CSOC_ARGO_ROOT_MANIFEST CSOC_ARGO_ROOT_MANIFEST_REL
+    unset CSOC_APPLICATION_DIR_REL CSOC_FLEET_PATH
     CSOC_PROFILE="${profile}"
     csoc::load_profile "${REPO_ROOT}"
     jq -n \
@@ -51,6 +52,8 @@ for profile in "${profiles[@]}"; do
       --arg expected "${MAGNUM_EXPECTED_INITIAL_NODES}" \
       --arg master_flavor "${MAGNUM_MASTER_FLAVOR}" \
       --arg worker_flavor "${MAGNUM_WORKER_FLAVOR}" \
+      --arg boot_volume "${MAGNUM_BOOT_VOLUME_SIZE}" \
+      --arg autoscaling "${MAGNUM_AUTO_SCALING_ENABLED}" \
       --arg fleet "${CSOC_FLEET_ENABLED}" \
       --arg bootstrap_revision "${CSOC_BOOTSTRAP_REVISION}" \
       --arg catalog_revision "${CSOC_CATALOG_REVISION}" \
@@ -60,7 +63,8 @@ for profile in "${profiles[@]}"; do
         masterCount:($master_count|tonumber),nodeCount:($node_count|tonumber),
         minNodes:($min_nodes|tonumber),maxNodes:($max_nodes|tonumber),
         expectedNodes:($expected|tonumber),masterFlavor:$master_flavor,
-        workerFlavor:$worker_flavor,fleetEnabled:($fleet == "true"),
+        workerFlavor:$worker_flavor,bootVolumeGiB:($boot_volume|tonumber),
+        autoscalingEnabled:($autoscaling == "true"),fleetEnabled:($fleet == "true"),
         revisions:{bootstrap:$bootstrap_revision,catalog:$catalog_revision,fleet:$fleet_revision},
         rootManifest:$root_manifest}'
   ) || log::die "Unable to load CSOC profile ${profile}"
@@ -72,6 +76,7 @@ for profile in "${profiles[@]}"; do
     (.expectedNodes == (.masterCount + .nodeCount)) and
     (.masterCount == 1 or (.masterCount >= 3 and (.masterCount % 2 == 1))) and
     (.masterFlavor != "") and (.workerFlavor != "") and
+    (.bootVolumeGiB >= 20 and .bootVolumeGiB <= 60) and
     ([.revisions[] | length > 0] | all)
   ' <<<"${profile_json}" >/dev/null \
     || log::die "Invalid counts, bounds, flavors, or revisions in profile ${profile}"
@@ -122,7 +127,7 @@ while IFS= read -r -d '' yaml_file; do
         (( min_nodes >= 1 && min_nodes <= max_nodes )) \
           || log::die "SpokeCluster ${namespace}/${name} violates 1 <= minNodes <= maxNodes"
         key="${namespace}/${name}"
-        if [[ -n "${spoke_keys[${key}]:-}" && "${yaml_file}" == "${FLEET_ROOT}/accounts/"* ]]; then
+        if [[ -n "${spoke_keys[${key}]:-}" && "${yaml_file}" == "${FLEET_ROOT}/environments/"* ]]; then
           log::die "Active SpokeCluster ${key} is declared more than once"
         fi
         spoke_keys[${key}]="${yaml_file}"
@@ -145,7 +150,7 @@ while IFS= read -r -d '' yaml_file; do
     ' "${yaml_file}"
   )
 done < <(
-  find "${FLEET_ROOT}/accounts" "${FLEET_ROOT}/examples" -type f \
+  find "${FLEET_ROOT}/environments" "${FLEET_ROOT}/examples" -type f \
     \( -name '*.yaml' -o -name '*.yml' \) -print0
 )
 
