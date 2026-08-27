@@ -7,8 +7,9 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf -- "${TEST_ROOT}"' EXIT
 mkdir -p "${TEST_ROOT}/bin" "${TEST_ROOT}/accounts/account-a" \
-  "${TEST_ROOT}/accounts/account-b" "${TEST_ROOT}/fleet/accounts/account-a" \
-  "${TEST_ROOT}/fleet/accounts/account-b" \
+  "${TEST_ROOT}/accounts/account-b" \
+  "${TEST_ROOT}/fleet/environments/staging/accounts/account-a/hello/dev" \
+  "${TEST_ROOT}/fleet/environments/staging/accounts/account-b/hello/dev" \
   "${TEST_ROOT}/kube-state"
 ln -s "${SCRIPT_DIR}/fake-openstack.sh" "${TEST_ROOT}/bin/openstack"
 ln -s "${SCRIPT_DIR}/fake-kubectl.sh" "${TEST_ROOT}/bin/kubectl"
@@ -22,7 +23,7 @@ write_identity() {
     "  name: ${identity}" \
     'spec:' \
     "  projectID: ${project}" \
-    >"${TEST_ROOT}/fleet/accounts/${identity}/identity-config.yaml"
+    >"${TEST_ROOT}/fleet/environments/staging/accounts/${identity}/hello/dev/identity-config.yaml"
 }
 
 write_cloud() {
@@ -67,6 +68,7 @@ export MAGNUM_CLOUDS_YAML="${TEST_ROOT}/magnum-clouds.yaml"
 export FAKE_KUBECTL_LOG="${TEST_ROOT}/kubectl.log"
 export FAKE_KUBECTL_STATE="${TEST_ROOT}/kube-state"
 export CSOC_TEST_LOCAL_FLEET_SOURCE=true
+export CSOC_PROFILE=staging
 
 run_loader() {
   bash "${REPO_ROOT}/scripts/bootstrap/credentials/create-runtime-cloud-secret.sh" --all \

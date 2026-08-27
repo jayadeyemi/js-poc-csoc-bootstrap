@@ -7,11 +7,11 @@ spec:
   project: rgds
   source:
     repoURL: https://github.com/jayadeyemi/js-poc-csoc-bootstrap
-    targetRevision: environment/prod
+    targetRevision: environment/staging
     path: .
     directory:
       recurse: true
-      include: "{argocd/projects/*.yaml,argocd/environments/prod/apps/*.yaml}"
+      include: "{argocd/projects/*.yaml,argocd/environments/staging/apps/*.yaml}"
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

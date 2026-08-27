@@ -8,12 +8,14 @@ instances to GitOps.
 
 | Profile | Magnum ownership | Git sources | Fleet |
 |---|---|---|---|
-| `dev` (default) | Existing `js2-mgmt-cluster-2`; 1 × `m3.quad` control plane | bootstrap `master`, catalog/fleet `main` | CSOC Hello and `test-poc` |
-| `prod` | Dormant `js2-csoc-prod`; immutable 3 × `m3.quad` control plane | coordinated `release/prod` branches | disabled |
+| `dev` | New `csoc-dev`; 1 × `m3.small` control plane, 1 worker, 40-GiB roots | coordinated `environment/dev` | disabled; graphs only |
+| `staging` | New `csoc-staging`; 3 × `m3.small` control plane, 2 workers, 40-GiB roots | coordinated `environment/staging` | assigned dev tuples |
+| `prod` | New `csoc-prod`; 3 × `m3.small` control plane, 3 workers, 60-GiB roots | coordinated `environment/prod` | prod and explicitly routed dev tuples |
 
-Production is a template only: nothing creates it unless an operator explicitly
-runs a Magnum provisioning target with `PROFILE=prod` after the coordinated
-release branches exist.
+All three profiles are declarations only: nothing creates them unless an
+operator explicitly authorizes and runs provisioning. The existing
+`js2-mgmt-cluster-2` remains a legacy staging migration source; it is not
+adopted, renamed, or shrunk in place.
 
 ## Quick start
 
@@ -22,6 +24,7 @@ make help              # list all targets
 make container-build   # build the pinned management image
 make bootstrap         # full pipeline A–G (idempotent)
 make container-up PROFILE=dev
+make container-up PROFILE=staging
 make container-up PROFILE=prod
 make containers-status # show operator containers for every profile
 make csoc-plan PROFILE=dev
@@ -35,7 +38,7 @@ for an older Git commit cannot authorize newly pulled manifests.
 
 `make bootstrap` runs the inner pipeline non-interactively as the host UID/GID inside the pinned image. `make container-run` mounts live credentials at `/run/csoc-credentials` read-only and the workspace at `/workspace`.
 
-The two persistent containers are isolated operator shells with different
+The three persistent containers are isolated operator shells with different
 kubeconfig mounts. They are convenient for simultaneous administration, but
 they do not perform reconciliation: Argo CD runs inside each CSOC and continues
 Git synchronization when the local containers are stopped.
@@ -56,7 +59,7 @@ Steps A–F prepare the management cluster. Step G applies the app-of-apps root 
 argocd/              AppProjects, Applications, App-of-Apps, and Argo CD install values
 controllers/         controller Applications (cert-manager, CAPI Operator, KRO, ORC)
 iac/magnum/          shared Magnum parameters (no secrets)
-iac/csoc/profiles/   dev/prod ownership, immutable sizing, and Git revisions
+iac/csoc/profiles/   dev/staging/prod ownership, sizing, and Git revisions
 scripts/host/        host-only image build/run and outer bootstrap entry point
 scripts/bootstrap/   in-container pipeline (Magnum, Argo CD, credentials)
 scripts/operations/  explicit operator actions: diagnose, inventory, delete
@@ -79,7 +82,7 @@ Neither file is tracked. Copy and fill in the examples, then `chmod 600` both fi
 
 ## Argo CD conventions
 
-- All Applications must descend from `argocd/app-of-apps.yaml` — never apply orphan Applications.
+- All Applications must descend from the selected profile App-of-Apps — never apply orphan Applications.
 - AppProjects must restrict `sourceRepos`, `destinations`, and `clusterResourceWhitelist` explicitly.
 - `prune: false` everywhere — cluster and network retirement is always a deliberate operator action.
 - Workloads reach spoke clusters through KRO-produced CAPI `ClusterResourceSet` addons; do not add ApplicationSets.
@@ -99,7 +102,7 @@ make validate-clusters # every management profile and every declared spoke
 make clusters-verify-all # every provisioned CSOC and all of its active spokes
 ```
 
-The validation gate is the authoritative local check; GitHub Actions is not used.
+The validation gate is the authoritative local check.
 See [iac/csoc/WORKFLOW.md](iac/csoc/WORKFLOW.md) for the supported rename,
 resize, immutable-spec replacement, all-container, and all-cluster workflows.
 For retirement and recovery procedures, see [OPERATIONS.md](OPERATIONS.md).

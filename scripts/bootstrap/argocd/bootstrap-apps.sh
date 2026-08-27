@@ -45,15 +45,11 @@ fi
 APP_OF_APPS="${BOOTSTRAP_SOURCE}/${CSOC_ARGO_ROOT_MANIFEST_REL}"
 PROJECT_DIR="${BOOTSTRAP_SOURCE}/argocd/projects"
 CONTROLLER_DIR="${BOOTSTRAP_SOURCE}/controllers"
-if [[ "${CSOC_PROFILE}" == prod ]]; then
-  APPLICATION_DIR="${BOOTSTRAP_SOURCE}/argocd/prod/apps"
-else
-  APPLICATION_DIR="${BOOTSTRAP_SOURCE}/argocd/apps"
-fi
+APPLICATION_DIR="${BOOTSTRAP_SOURCE}/${CSOC_APPLICATION_DIR_REL}"
 RGD_DIR="${CATALOG_SOURCE}/rgds"
 RGD_PACKAGE_DIR="${RGD_DIR}/test-poc"
-ACCOUNTS_DIR="${FLEET_SOURCE}/accounts"
-CSOC_DIR="${FLEET_SOURCE}/csoc"
+FLEET_ENV_DIR="${FLEET_SOURCE}/${CSOC_FLEET_PATH}"
+ACCOUNTS_DIR="${FLEET_ENV_DIR}/accounts"
 GATE_CONFIGMAP=argocd-manual-manifest-gate
 ARGO_FIELD_MANAGER=csoc-bootstrap
 
@@ -130,7 +126,7 @@ done
 [[ -f "${RGD_DIR}/kustomization.yaml" ]] \
   || log::die "RGD definitions are unavailable for ${CSOC_CATALOG_REVISION}"
 if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
-  [[ -f "${ACCOUNTS_DIR}/kustomization.yaml" && -f "${CSOC_DIR}/kustomization.yaml" ]] \
+  [[ -f "${FLEET_ENV_DIR}/kustomization.yaml" && -d "${ACCOUNTS_DIR}" ]] \
     || log::die "Fleet entrypoints are unavailable for ${CSOC_FLEET_REVISION}"
 fi
 
@@ -212,23 +208,22 @@ wait_crd spokeclusters.csoc.js2.org
 
 log::step 5 "Manually applying profile-selected fleet instances in graph order"
 if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
-  apply_manifest "${CSOC_DIR}/hello-app.yaml"
-  wait_instance_ready helloapp csoc kro-system "1800s"
-
-  mapfile -t active_accounts < <(yq -r '.resources[]?' "${ACCOUNTS_DIR}/kustomization.yaml")
-  for account in "${active_accounts[@]}"; do
-  account_dir="${ACCOUNTS_DIR}/${account}"
-  namespace="spokeclusters-${account}"
+  mapfile -t instance_dirs < <(
+    find "${ACCOUNTS_DIR}" -type f -name cluster.yaml -printf '%h\n' | sort
+  )
+  for account_dir in "${instance_dirs[@]}"; do
   for required in identity-config.yaml identity.yaml spoke-config.yaml network.yaml keypair.yaml cluster.yaml; do
     [[ -f "${account_dir}/${required}" ]] \
-      || log::die "Active account ${account} is missing ${required}"
+      || log::die "Active instance ${account_dir#${FLEET_ENV_DIR}/} is missing ${required}"
   done
+  identity=$(yq -er '.metadata.name' "${account_dir}/identity-config.yaml")
   spoke_name=$(yq -er '.metadata.name' "${account_dir}/cluster.yaml")
+  namespace=$(yq -er '.metadata.namespace' "${account_dir}/cluster.yaml")
   network_kind=$(yq -er '.kind' "${account_dir}/network.yaml" | tr '[:upper:]' '[:lower:]')
   apply_manifest "${account_dir}/identity-config.yaml"
-  wait_instance_ready immutablespokeconfig "${account}"
+  wait_instance_ready immutablespokeconfig "${identity}"
   apply_manifest "${account_dir}/identity.yaml"
-  wait_instance_ready spokeidentity "${account}"
+  wait_instance_ready spokeidentity "${identity}"
   apply_manifest "${account_dir}/spoke-config.yaml"
   wait_instance_ready spokeenvironmentconfig "${spoke_name}" "${namespace}"
   apply_manifest "${account_dir}/keypair.yaml"

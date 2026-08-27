@@ -1,5 +1,23 @@
 # js-poc-csoc-bootstrap
 
+## Environment invariants
+
+- Profiles are exactly `dev`, `staging`, and `prod`; their cluster names are
+  exactly `csoc-dev`, `csoc-staging`, and `csoc-prod`.
+- Each profile tracks `environment/<profile>` in all three repositories and
+  owns unique state, kubeconfig, credential, and container paths.
+- Dev installs controllers/RGDs only. Staging owns assigned dev tuples. Prod
+  owns prod tuples plus explicitly routed dev tuples.
+- Never rename, adopt, or shrink an existing Magnum cluster. Plan a blue/green
+  migration with backup, acceptance, rollback, and exact-UUID retirement.
+- Boot volumes are OS/controller storage, not application persistence. Use 40
+  GiB for dev/staging and 60 GiB for prod unless current preflight evidence
+  justifies more; use separate Cinder PVCs for persistent application data.
+- No script may infer ownership from a cluster name. Only the profile's ignored
+  state file can authorize mutable operations, and deletion remains explicit.
+- Static validation may run freely. Provisioning, apply, mutation, deletion,
+  autoscaling installation, and credential creation require live authorization.
+
 Bootstraps the **CSOC management cluster** on Jetstream2 Magnum, then installs Argo CD and hands controllers, RGD definitions, and fleet instances to GitOps.
 
 The existing `js2-mgmt-cluster-2` is `PROFILE=dev` and tracks catalog/fleet
