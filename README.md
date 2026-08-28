@@ -85,7 +85,18 @@ Neither file is tracked. Copy and fill in the examples, then `chmod 600` both fi
 - All Applications must descend from the selected profile App-of-Apps — never apply orphan Applications.
 - AppProjects must restrict `sourceRepos`, `destinations`, and `clusterResourceWhitelist` explicitly.
 - `prune: false` everywhere — cluster and network retirement is always a deliberate operator action.
-- Workloads reach spoke clusters through KRO-produced CAPI `ClusterResourceSet` addons; do not add ApplicationSets.
+- V2 RGDs create central Argo Applications that target registered spokes.
+  `ClusterResourceSet` and `HelmChartProxy` are compatibility-only delivery
+  paths and must not be introduced into v2.
+
+A v2 registration brokers three independently certified Argo identities for
+the same spoke endpoint: application (RoleBound only to approved application
+namespaces), platform (the explicit foundation inventory), and monitoring (the
+explicit monitoring/CRD/webhook inventory). Cluster Autoscaler receives a
+fourth certificate in a kubeconfig limited to the owning CAPI namespace. Set a
+new `SpokeRegistration.spec.rotationRequest` token for a reviewed rotation;
+the broker records distinct hashes and never puts the CAPI admin kubeconfig in
+an Argo Secret.
 
 ## Bash conventions
 
@@ -98,11 +109,19 @@ Neither file is tracked. Copy and fill in the examples, then `chmod 600` both fi
 
 ```bash
 make validate   # static Bash/YAML/JSON, Kustomize, Helm, secret-scan, and lifecycle tests
+make cmp-build cmp-verify # functional mode-specific CMP rendering and rejection tests
+CSOC_KIND_COMPILE_APPROVED=true make v2-kind-compile # retained local KRO 0.9.3 compile cluster
 make validate-clusters # every management profile and every declared spoke
 make clusters-verify-all # every provisioned CSOC and all of its active spokes
 ```
 
-The validation gate is the authoritative local check.
+The validation gate recursively enforces one RGD per file, explicit KRO
+aggregation permissions without wildcards, account capacity fixtures, chart
+schema/GVK/AppProject comparisons, registration create/rotation/cleanup tests,
+and absence of `MachineDeployment.spec.replicas`. The kind gate requires every
+v2 GraphRevision to be Active/Ready, exercises the pinned CAPI conversion
+webhooks, and proves a forced KRO reconcile does not reclaim `replicas` from
+Cluster Autoscaler. It leaves its local test cluster available for inspection.
 See [iac/csoc/WORKFLOW.md](iac/csoc/WORKFLOW.md) for the supported rename,
 resize, immutable-spec replacement, all-container, and all-cluster workflows.
 For retirement and recovery procedures, see [OPERATIONS.md](OPERATIONS.md).

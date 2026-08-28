@@ -1,0 +1,12 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ConfigManagementPlugin
+metadata:
+  name: csoc-sops-helm
+spec:
+  version: v1.0
+  discover:
+    fileName: .csoc-cmp
+  generate:
+    command: [/usr/local/bin/csoc-cmp-generate]
+  preserveFileMode: false
+  provideGitCreds: false

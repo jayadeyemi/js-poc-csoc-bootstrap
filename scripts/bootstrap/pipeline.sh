@@ -37,7 +37,7 @@ FLEET_ROOT="${FLEET_ROOT:-$(cd "${REPO_ROOT}/../js-poc-csoc-fleet" && pwd)}"
 if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
   mapfile -t active_identities < <(
     find "${FLEET_ROOT}/${CSOC_FLEET_PATH}/accounts" -type f \
-      -name identity-config.yaml -print0 \
+      \( -name identity-config.yaml -o -name spoke-account.yaml \) -print0 \
       | xargs -0 -r yq -r '.metadata.name' | sort -u
   )
   for identity in "${active_identities[@]}"; do

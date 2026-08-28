@@ -19,6 +19,7 @@ export CSOC_PROFILE = $(PROFILE)
 	csoc-plan csoc-resize clusters-verify clusters-verify-all \
 	credential-create capi-secret \
 	argocd-install argocd-manual-smoke argocd-bootstrap argocd-status \
+	cmp-build cmp-verify v2-render-verify v2-server-dry-run v2-activate v2-kind-compile \
 	destroy-spoke \
 	bootstrap
 
@@ -34,6 +35,31 @@ validate-clusters: ## Validate every CSOC profile and every declared spoke
 
 security-scan: ## Scan publishable files for credential material
 	bash scripts/tools/scan-secrets.sh
+
+cmp-build: ## Build the pinned non-root SOPS/AGE Argo CMP image locally
+	@set -a; . ./versions.env; set +a; \
+	docker build --pull=false \
+	  --build-arg HELM_VERSION="$${HELM_VERSION}" \
+	  --build-arg SOPS_VERSION="$${SOPS_VERSION}" \
+	  --build-arg AGE_VERSION="$${AGE_VERSION}" \
+	  --build-arg KUSTOMIZE_VERSION="$${KUSTOMIZE_VERSION}" \
+	  --build-arg YQ_VERSION="$${YQ_VERSION}" \
+	  --tag csoc-sops-helm-cmp:0.1.0 cmp
+
+cmp-verify: ## Verify local CMP user, tool pins, and embedded charts
+	bash scripts/tools/validate-cmp-image.sh
+
+v2-render-verify: ## Render supported v2 charts and compare AppProject/RBAC policy
+	bash scripts/tools/validate-v2-renders.sh
+
+v2-server-dry-run: ## Validate RGDs against an approved prepared controller API (non-persisting)
+	bash scripts/tools/server-dry-run-v2.sh
+
+v2-activate: ## Apply v2 RGDs and wait for Active GraphRevisions (explicitly gated)
+	bash scripts/tools/activate-v2-rgds.sh
+
+v2-kind-compile: ## Compile every v2 RGD in a retained local kind cluster (explicitly gated)
+	bash scripts/tools/kind-compile-v2.sh
 
 preflight: ## Run read-only OpenStack and ownership checks
 	bash scripts/bootstrap/magnum/preflight.sh

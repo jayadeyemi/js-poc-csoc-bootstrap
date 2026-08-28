@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 WORKSPACE_ROOT="$(cd "${REPO_ROOT}/.." && pwd)"
+REFERENCES_ROOT="$(cd "${WORKSPACE_ROOT}/../references" && pwd)"
 source "${REPO_ROOT}/scripts/lib/logging.bash"
 source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
 csoc::load_profile "${REPO_ROOT}"
@@ -38,6 +39,7 @@ log::info "Starting ${CSOC_PROFILE} management container (${IMAGE_NAME}:${IMAGE_
 log::info "  credentials : separated Magnum/runtime files → /run/csoc-credentials (ro)"
 log::info "  kubeconfig  : ${KUBECONFIG_DIR}  →  /home/jetstream/.kube"
 log::info "  workspace   : ${WORKSPACE_ROOT}  →  /workspace"
+log::info "  references  : ${REFERENCES_ROOT}  →  /references (ro)"
 
 docker_args=(--rm)
 if [[ "${CSOC_CONTAINER_DETACH}" == true ]]; then
@@ -64,6 +66,7 @@ docker run "${docker_args[@]}" \
   --volume "${HOST_RUNTIME_CREDENTIALS_DIR}:${CONTAINER_RUNTIME_CREDENTIALS_DIR}:ro" \
   --volume "${KUBECONFIG_DIR}:/home/jetstream/.kube" \
   --volume "${WORKSPACE_ROOT}:/workspace" \
+  --volume "${REFERENCES_ROOT}:/references:ro" \
   --tmpfs /workspace/js-poc-csoc-bootstrap/scripts/host/credentials:rw,noexec,nosuid,nodev,size=1m \
   --workdir /workspace/js-poc-csoc-bootstrap \
   --env "MAGNUM_CLOUDS_YAML=${CONTAINER_MAGNUM_CLOUDS_YAML}" \
@@ -71,5 +74,8 @@ docker run "${docker_args[@]}" \
   --env "OS_CLIENT_CONFIG_FILE=${CONTAINER_MAGNUM_CLOUDS_YAML}" \
   --env "OS_CLOUD=${OS_CLOUD:-openstack}" \
   --env "CSOC_PROFILE=${CSOC_PROFILE}" \
+  --env "CSOC_BOOTSTRAP_REVISION=${CSOC_BOOTSTRAP_REVISION}" \
+  --env "CSOC_CATALOG_REVISION=${CSOC_CATALOG_REVISION}" \
+  --env "CSOC_FLEET_REVISION=${CSOC_FLEET_REVISION}" \
   "${IMAGE_NAME}:${IMAGE_TAG}" \
   "${command_args[@]}"

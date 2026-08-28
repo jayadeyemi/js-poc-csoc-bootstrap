@@ -17,6 +17,17 @@
   state file can authorize mutable operations, and deletion remains explicit.
 - Static validation may run freely. Provisioning, apply, mutation, deletion,
   autoscaling installation, and credential creation require live authorization.
+- The v2 catalog uses one RGD per YAML file in nested ownership directories;
+  static validation must discover that inventory recursively.
+- Register a v2 spoke as soon as its control-plane API is reachable; never wait
+  on `ClusterFoundation`, because central Argo must deliver that foundation.
+- Keep separate namespace-limited application, explicit platform, and explicit
+  monitoring Argo identities. The spoke-local Cluster Autoscaler receives only a renewable,
+  namespace-scoped management kubeconfig; never copy the CAPI admin kubeconfig.
+- Account namespace creation and labels are bootstrap prerequisites. A
+  `SpokeAccount` references that namespace and must never own it.
+- Validate every supported chart through the functional CMP image and compile
+  all RGDs to Active GraphRevisions before a candidate commit is promoted.
 
 Bootstraps the **CSOC management cluster** on Jetstream2 Magnum, then installs Argo CD and hands controllers, RGD definitions, and fleet instances to GitOps.
 

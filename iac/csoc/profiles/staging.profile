@@ -2,9 +2,10 @@
 # tuples assigned to staging, initially test-poc/hello-app/dev.
 CSOC_PROFILE_NAME=staging
 CSOC_FLEET_ENABLED=true
-CSOC_BOOTSTRAP_REVISION=environment/staging
-CSOC_CATALOG_REVISION=environment/staging
-CSOC_FLEET_REVISION=environment/staging
+CSOC_API_GENERATION=v2
+CSOC_BOOTSTRAP_REVISION=${CSOC_BOOTSTRAP_REVISION:-environment/staging}
+CSOC_CATALOG_REVISION=${CSOC_CATALOG_REVISION:-environment/staging}
+CSOC_FLEET_REVISION=${CSOC_FLEET_REVISION:-environment/staging}
 CSOC_ARGO_ROOT_MANIFEST_REL=iac/csoc/profiles/staging-app-of-apps.yaml
 CSOC_APPLICATION_DIR_REL=argocd/environments/staging/apps
 CSOC_FLEET_PATH=environments/staging

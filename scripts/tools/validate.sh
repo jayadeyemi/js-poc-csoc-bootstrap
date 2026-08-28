@@ -77,8 +77,11 @@ for root_manifest in "${REPO_ROOT}"/iac/csoc/profiles/*-app-of-apps.yaml; do
     || log::die "App-of-Apps must belong to rgds: ${root_manifest}"
 done
 for controller in "${REPO_ROOT}"/controllers/*.yaml; do
-  [[ $(yq -r '.spec.project' "${controller}") == rgds ]] \
-    || log::die "Controller Application must belong to rgds: ${controller}"
+  mapfile -t controller_projects < <(yq eval-all -r 'select(.kind == "Application") | .spec.project' "${controller}")
+  if (( ${#controller_projects[@]} > 0 )); then
+    [[ "${controller_projects[*]}" == rgds ]] \
+      || log::die "Controller Application must belong to rgds: ${controller}"
+  fi
 done
 for resource in \
   'cert-manager.io:Certificate' \
@@ -97,7 +100,7 @@ done
 source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
 for profile in dev staging prod; do
   (
-    unset CSOC_PROFILE_NAME CSOC_FLEET_ENABLED CSOC_BOOTSTRAP_REVISION
+    unset CSOC_PROFILE_NAME CSOC_FLEET_ENABLED CSOC_API_GENERATION CSOC_BOOTSTRAP_REVISION
     unset CSOC_CATALOG_REVISION CSOC_FLEET_REVISION CSOC_ARGO_ROOT_MANIFEST_REL
     unset CSOC_APPLICATION_DIR_REL CSOC_FLEET_PATH MAGNUM_CLUSTER_NAME
     unset MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR MAGNUM_MASTER_COUNT
@@ -112,6 +115,11 @@ for profile in dev staging prod; do
        && "${CSOC_CATALOG_REVISION}" == "${expected_revision}" \
        && "${CSOC_FLEET_REVISION}" == "${expected_revision}" ]] \
       || log::die "${profile} profile identity or revisions are inconsistent"
+    if [[ "${profile}" == prod ]]; then
+      [[ "${CSOC_API_GENERATION}" == v1 ]] || log::die "Prod must remain on v1 until separately authorized"
+    else
+      [[ "${CSOC_API_GENERATION}" == v2 ]] || log::die "${profile} must use the v2 API generation"
+    fi
     app_dir="${REPO_ROOT}/${CSOC_APPLICATION_DIR_REL}"
     [[ -f "${app_dir}/controllers.yaml" && -f "${app_dir}/rgds.yaml" ]] \
       || log::die "${profile} controller/RGD Applications are missing"
@@ -131,11 +139,18 @@ for profile in dev staging prod; do
     fi
   )
 done
-[[ $(CSOC_PROFILE=dev bash -c 'source "$1"; csoc::load_profile "$2"; printf "%s:%s:%s" "$MAGNUM_BOOT_VOLUME_SIZE" "$MAGNUM_MASTER_FLAVOR" "$CSOC_FLEET_ENABLED"' _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 20:m3.small:false ]] \
+[[ $(CSOC_PROFILE=dev CSOC_BOOTSTRAP_REVISION=agent/bootstrap-candidate \
+  CSOC_CATALOG_REVISION=agent/catalog-candidate bash -c \
+  'source "$1"; csoc::load_profile "$2"; printf "%s:%s" "$CSOC_BOOTSTRAP_REVISION" "$CSOC_CATALOG_REVISION"' \
+  _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") \
+  == agent/bootstrap-candidate:agent/catalog-candidate ]] \
+  || log::die "Candidate source revisions must override environment defaults without editing profiles"
+profile_probe='unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR MAGNUM_MASTER_COUNT MAGNUM_MASTER_FLAVOR MAGNUM_NODE_COUNT MAGNUM_WORKER_FLAVOR MAGNUM_MIN_NODE_COUNT MAGNUM_MAX_NODE_COUNT MAGNUM_EXPECTED_INITIAL_NODES MAGNUM_BOOT_VOLUME_SIZE MAGNUM_AUTO_SCALING_ENABLED; source "$1"; csoc::load_profile "$2"'
+[[ $(CSOC_PROFILE=dev bash -c "${profile_probe}; printf '%s:%s:%s' \"\$MAGNUM_BOOT_VOLUME_SIZE\" \"\$MAGNUM_MASTER_FLAVOR\" \"\$CSOC_FLEET_ENABLED\"" _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 20:m3.small:false ]] \
   || log::die "Dev must use the small no-fleet profile"
-[[ $(CSOC_PROFILE=staging bash -c 'source "$1"; csoc::load_profile "$2"; printf "%s:%s" "$MAGNUM_BOOT_VOLUME_SIZE" "$CSOC_FLEET_ENABLED"' _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 20:true ]] \
+[[ $(CSOC_PROFILE=staging bash -c "${profile_probe}; printf '%s:%s' \"\$MAGNUM_BOOT_VOLUME_SIZE\" \"\$CSOC_FLEET_ENABLED\"" _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 20:true ]] \
   || log::die "Staging sizing or fleet policy is incorrect"
-[[ $(CSOC_PROFILE=prod bash -c 'source "$1"; csoc::load_profile "$2"; printf "%s:%s:%s" "$MAGNUM_BOOT_VOLUME_SIZE" "$MAGNUM_MASTER_COUNT" "$CSOC_FLEET_ENABLED"' _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 20:3:true ]] \
+[[ $(CSOC_PROFILE=prod bash -c "${profile_probe}; printf '%s:%s:%s' \"\$MAGNUM_BOOT_VOLUME_SIZE\" \"\$MAGNUM_MASTER_COUNT\" \"\$CSOC_FLEET_ENABLED\"" _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 20:3:true ]] \
   || log::die "Prod sizing or fleet policy is incorrect"
 [[ ! -e "${REPO_ROOT}/argocd/apps/csoc-baseline.yaml" \
    && ! -d "${REPO_ROOT}/argocd/applicationsets" ]] \
@@ -386,7 +401,7 @@ while IFS='|' read -r account app environment owner path; do
      && $(yq -r '.metadata.namespace' "${FLEET_ROOT}/${path}/cluster.yaml") == "spokeclusters-${canonical_name}" \
      && $(yq -r '.spec.clusterName' "${FLEET_ROOT}/${path}/hello-app.yaml") == "${canonical_name}" ]] \
     || log::die "Fleet tuple ${key} does not use its canonical name/namespace"
-done < <(yq -r '.assignments[] | [.account,.app,.environment,.owner,.path] | join("|")' \
+done < <(yq -r '.legacyAssignments[] | [.account,.app,.environment,.owner,.path] | join("|")' \
   "${FLEET_ROOT}/ownership.yaml")
 [[ "${ownership_keys[test-poc/hello-app/dev]:-}" == staging ]] \
   || log::die "test-poc/hello-app/dev must be staging-owned"
@@ -456,5 +471,7 @@ log::step 7 "Running local lifecycle and credential regression tests"
 bash "${REPO_ROOT}/tests/magnum/run.sh"
 bash "${REPO_ROOT}/tests/credentials/run.sh"
 bash "${REPO_ROOT}/tests/spokes/run.sh"
+bash "${REPO_ROOT}/tests/registration/run.sh"
+bash "${REPO_ROOT}/scripts/tools/validate-v2.sh"
 
 log::success "All modular KRO non-destructive validation checks passed."

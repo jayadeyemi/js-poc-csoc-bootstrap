@@ -31,7 +31,8 @@ declare -A kubeconfig_paths=()
 log::step 1 "Validating every declarative CSOC management profile"
 for profile in "${profiles[@]}"; do
   profile_json=$(
-    unset CSOC_PROFILE CSOC_PROFILE_NAME CSOC_FLEET_ENABLED
+    unset CSOC_PROFILE CSOC_PROFILE_NAME CSOC_FLEET_ENABLED CSOC_API_GENERATION
+    unset CSOC_BOOTSTRAP_REVISION CSOC_CATALOG_REVISION CSOC_FLEET_REVISION
     unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR
     unset MAGNUM_MASTER_COUNT MAGNUM_MASTER_FLAVOR MAGNUM_NODE_COUNT
     unset MAGNUM_WORKER_FLAVOR MAGNUM_MIN_NODE_COUNT MAGNUM_MAX_NODE_COUNT
@@ -55,6 +56,7 @@ for profile in "${profiles[@]}"; do
       --arg boot_volume "${MAGNUM_BOOT_VOLUME_SIZE}" \
       --arg autoscaling "${MAGNUM_AUTO_SCALING_ENABLED}" \
       --arg fleet "${CSOC_FLEET_ENABLED}" \
+      --arg api_generation "${CSOC_API_GENERATION}" \
       --arg bootstrap_revision "${CSOC_BOOTSTRAP_REVISION}" \
       --arg catalog_revision "${CSOC_CATALOG_REVISION}" \
       --arg fleet_revision "${CSOC_FLEET_REVISION}" \
@@ -65,6 +67,7 @@ for profile in "${profiles[@]}"; do
         expectedNodes:($expected|tonumber),masterFlavor:$master_flavor,
         workerFlavor:$worker_flavor,bootVolumeGiB:($boot_volume|tonumber),
         autoscalingEnabled:($autoscaling == "true"),fleetEnabled:($fleet == "true"),
+        apiGeneration:$api_generation,
         revisions:{bootstrap:$bootstrap_revision,catalog:$catalog_revision,fleet:$fleet_revision},
         rootManifest:$root_manifest}'
   ) || log::die "Unable to load CSOC profile ${profile}"
@@ -77,7 +80,8 @@ for profile in "${profiles[@]}"; do
     (.masterCount == 1 or (.masterCount >= 3 and (.masterCount % 2 == 1))) and
     (.masterFlavor != "") and (.workerFlavor != "") and
     (.bootVolumeGiB >= 20 and .bootVolumeGiB <= 60) and
-    ([.revisions[] | length > 0] | all)
+    ([.revisions[] | length > 0] | all) and
+    (.apiGeneration == "v1" or .apiGeneration == "v2")
   ' <<<"${profile_json}" >/dev/null \
     || log::die "Invalid counts, bounds, flavors, or revisions in profile ${profile}"
 

@@ -1,0 +1,48 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kro-csoc-v2-graphs
+  labels:
+    rbac.kro.run/aggregate-to-controller: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "-11"
+rules:
+  - apiGroups: [""]
+    resources: [namespaces, configmaps, resourcequotas]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [infra.csoc.js2.org]
+    resources: [spokeaccounts, spokenetworks, machineprofiles, workloadclusters, spokenodepools, spokeregistrations, clusterfoundations]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [infra.csoc.js2.org]
+    resources: [spokeaccounts/status, spokenetworks/status, machineprofiles/status, workloadclusters/status, spokenodepools/status, spokeregistrations/status, clusterfoundations/status]
+    verbs: [get, update, patch]
+  - apiGroups: [delivery.csoc.js2.org]
+    resources: [applicationboundaries, endpointbindings, hubauthbindings, secretbundles, cinderstoragebindings, cephfsaddons, cephfsvolumebindings, s3csiaddons, s3volumebindings, gpuruntimeaddons]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [delivery.csoc.js2.org]
+    resources: [applicationboundaries/status, endpointbindings/status, hubauthbindings/status, secretbundles/status, cinderstoragebindings/status, cephfsaddons/status, cephfsvolumebindings/status, s3csiaddons/status, s3volumebindings/status, gpuruntimeaddons/status]
+    verbs: [get, update, patch]
+  - apiGroups: [services.csoc.js2.org]
+    resources: [smokeapplications, jupyterhubinstances, monitoringinstances, registrycacheinstances, binderbuildinstances, jupyteroutpostinstances]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [services.csoc.js2.org]
+    resources: [smokeapplications/status, jupyterhubinstances/status, monitoringinstances/status, registrycacheinstances/status, binderbuildinstances/status, jupyteroutpostinstances/status]
+    verbs: [get, update, patch]
+  - apiGroups: [openstack.k-orc.cloud]
+    resources: [networks, subnets, routers, routerinterfaces, images, volumetypes]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [cluster.x-k8s.io]
+    resources: [clusters, machinedeployments]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [infrastructure.cluster.x-k8s.io]
+    resources: [openstackclusteridentities, openstackclusters, openstackmachinetemplates]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [bootstrap.cluster.x-k8s.io]
+    resources: [kubeadmconfigtemplates]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [controlplane.cluster.x-k8s.io]
+    resources: [kubeadmcontrolplanes]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [argoproj.io]
+    resources: [applications, appprojects]
+    verbs: [get, list, watch, create, update, patch, delete]

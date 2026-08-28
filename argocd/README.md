@@ -33,6 +33,12 @@ projects/
 | −5  | `rgds` — KRO compiles RGDs into CRDs |
 | 5   | `csoc-fleet` — fleet instances reference the CRDs |
 
+The Argo repo-server also has one non-root `csoc-sops-helm` CMP sidecar. Its
+image embeds exact tool and remote-chart versions at build time, accepts only
+allowlisted `ARGOCD_ENV_` inputs, requires exact commit revisions, and stores
+decrypted AGE/SOPS data only on a memory-backed volume. Each CSOC environment
+uses a different externally provisioned AGE-key Secret.
+
 ## Projects
 
 | Project | Source repos | Purpose |

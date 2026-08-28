@@ -2,9 +2,10 @@
 # explicitly routed away from staging in the fleet ownership registry.
 CSOC_PROFILE_NAME=prod
 CSOC_FLEET_ENABLED=true
-CSOC_BOOTSTRAP_REVISION=environment/prod
-CSOC_CATALOG_REVISION=environment/prod
-CSOC_FLEET_REVISION=environment/prod
+CSOC_API_GENERATION=v1
+CSOC_BOOTSTRAP_REVISION=${CSOC_BOOTSTRAP_REVISION:-environment/prod}
+CSOC_CATALOG_REVISION=${CSOC_CATALOG_REVISION:-environment/prod}
+CSOC_FLEET_REVISION=${CSOC_FLEET_REVISION:-environment/prod}
 CSOC_ARGO_ROOT_MANIFEST_REL=iac/csoc/profiles/prod-app-of-apps.yaml
 CSOC_APPLICATION_DIR_REL=argocd/environments/prod/apps
 CSOC_FLEET_PATH=environments/prod

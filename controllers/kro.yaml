@@ -16,6 +16,8 @@ spec:
       releaseName: kro
       values: |
         replicaCount: 1
+        rbac:
+          mode: aggregation
   destination:
     server: https://kubernetes.default.svc
     namespace: kro-system

@@ -5,6 +5,7 @@ identity=$(basename "$(dirname "${OS_CLIENT_CONFIG_FILE:?OS_CLIENT_CONFIG_FILE i
 case "${identity}" in
   account-a) expected_project=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ;;
   account-b) expected_project=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ;;
+  account-v2) expected_project=cccccccccccccccccccccccccccccccc ;;
   *) printf 'Unknown fake identity: %s\n' "${identity}" >&2; exit 64 ;;
 esac
 project=${FAKE_CREDENTIAL_PROJECT:-${expected_project}}
