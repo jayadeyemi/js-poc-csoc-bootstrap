@@ -10,7 +10,7 @@ CSOC_ARGO_ROOT_MANIFEST_REL=iac/csoc/profiles/staging-app-of-apps.yaml
 CSOC_APPLICATION_DIR_REL=argocd/environments/staging/apps
 CSOC_FLEET_PATH=environments/staging
 
-MAGNUM_CLUSTER_NAME=${MAGNUM_CLUSTER_NAME:-csoc-staging}
+MAGNUM_CLUSTER_NAME=${MAGNUM_CLUSTER_NAME:-js2-csoc-staging}
 MAGNUM_STATE_FILE_REL=.state/csoc/staging/magnum-cluster.json
 MAGNUM_KUBECONFIG_DIR_REL=.state/csoc/staging/kubeconfigs
 MAGNUM_MASTER_COUNT=${MAGNUM_MASTER_COUNT:-3}
