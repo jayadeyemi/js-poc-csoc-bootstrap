@@ -217,6 +217,8 @@ FAKE_CLUSTER_NAME=csoc-dev FAKE_CLUSTER_EXISTS=true \
   expect_fail "delete monitors permitted legacy ownership without resubmitting" \
   bash "${REPO_ROOT}/scripts/operations/magnum/delete-owned.sh" \
     11111111-2222-3333-4444-555555555555
+grep -F 'monitoring without resubmitting' "${TEST_ROOT}/stderr" >/dev/null \
+  || { printf 'not ok - permitted legacy deletion did not reach monitoring\n'; ((fail += 1)); }
 [[ ! -e "${FAKE_DELETE_LOG}" ]] \
   || { printf 'not ok - permitted legacy deletion was resubmitted\n'; ((fail += 1)); }
 
