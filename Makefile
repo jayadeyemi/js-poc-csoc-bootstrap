@@ -131,7 +131,7 @@ clusters-verify-all: ## Run live validation in a container for every provisioned
 	bash scripts/host/verify-all-clusters.sh
 
 # ── CAPI ──────────────────────────────────────────────────────────────────────
-credential-create: ## Create an expiring app credential (SOURCE/OUTPUT/NAME/POLICY/EXPIRES_AT)
+credential-create: ## Create an app credential (EXPIRES_AT optional only for unrestricted policy)
 	SOURCE_CLOUDS="$${SOURCE}" OUTPUT_CLOUDS="$${OUTPUT}" \
 	CREDENTIAL_NAME="$${NAME}" CREDENTIAL_POLICY="$${POLICY:-restricted}" \
 	CREDENTIAL_EXPIRES_AT="$${EXPIRES_AT}" \

@@ -70,6 +70,8 @@ RUNTIME_CLOUDS_YAML="${TEST_ROOT}/credentials/missing-runtime-clouds.yaml" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
 FAKE_MAGNUM_UNRESTRICTED=false expect_fail "preflight rejects restricted Magnum credential" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
+FAKE_MAGNUM_EXPIRES_AT= expect_pass "preflight accepts an intentionally non-expiring Magnum credential" \
+  bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
 FAKE_RUNTIME_UNRESTRICTED=true expect_fail "preflight rejects unrestricted runtime credential" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/preflight.sh"
 FAKE_MAGNUM_EXPIRES_AT=2020-01-01T00:00:00Z expect_fail "preflight rejects expired credentials" \

@@ -32,7 +32,7 @@ case "${args}" in
       expires_at="${FAKE_RUNTIME_EXPIRES_AT:-2099-01-01T00:00:00Z}"
     else
       unrestricted="${FAKE_MAGNUM_UNRESTRICTED:-true}"
-      expires_at="${FAKE_MAGNUM_EXPIRES_AT:-2099-01-01T00:00:00Z}"
+      expires_at="${FAKE_MAGNUM_EXPIRES_AT-2099-01-01T00:00:00Z}"
     fi
     printf '{"project_id":"%s","unrestricted":%s,"expires_at":"%s"}\n' \
       "${project}" "${unrestricted}" "${expires_at}"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create an expiring application credential without emitting its secret.
+# Create an application credential without emitting its secret.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,13 +22,16 @@ IMAGE_TAG=${JETSTREAM_IMAGE_TAG:-latest}
   || log::die "CREDENTIAL_NAME is required"
 [[ "${CREDENTIAL_POLICY}" == restricted || "${CREDENTIAL_POLICY}" == unrestricted ]] \
   || log::die "CREDENTIAL_POLICY must be restricted or unrestricted"
-[[ -n "${CREDENTIAL_EXPIRES_AT}" ]] \
-  || log::die "CREDENTIAL_EXPIRES_AT is required"
-date -u -d "${CREDENTIAL_EXPIRES_AT}" +%s >/dev/null 2>&1 \
-  || log::die "CREDENTIAL_EXPIRES_AT is not a valid timestamp"
-(( $(date -u -d "${CREDENTIAL_EXPIRES_AT}" +%s) > $(date -u +%s) )) \
-  || log::die "CREDENTIAL_EXPIRES_AT must be in the future"
-credential_expires_normalized=$(date -u -d "${CREDENTIAL_EXPIRES_AT}" +%Y-%m-%dT%H:%M:%S)
+credential_expires_normalized=""
+if [[ -n "${CREDENTIAL_EXPIRES_AT}" ]]; then
+  date -u -d "${CREDENTIAL_EXPIRES_AT}" +%s >/dev/null 2>&1 \
+    || log::die "CREDENTIAL_EXPIRES_AT is not a valid timestamp"
+  (( $(date -u -d "${CREDENTIAL_EXPIRES_AT}" +%s) > $(date -u +%s) )) \
+    || log::die "CREDENTIAL_EXPIRES_AT must be in the future"
+  credential_expires_normalized=$(date -u -d "${CREDENTIAL_EXPIRES_AT}" +%Y-%m-%dT%H:%M:%S)
+elif [[ "${CREDENTIAL_POLICY}" != unrestricted ]]; then
+  log::die "Restricted credentials require CREDENTIAL_EXPIRES_AT"
+fi
 [[ ! -e "${OUTPUT_CLOUDS}" ]] \
   || log::die "Refusing to overwrite credential file: ${OUTPUT_CLOUDS}"
 
@@ -61,7 +64,8 @@ docker run --rm \
     response=$(mktemp)
     output_tmp="/output/.${output_name}.tmp.$$"
     trap '\''rm -f "${response}" "${output_tmp}"'\'' EXIT
-    args=(application credential create "${name}" --expiration "${expires_at}")
+    args=(application credential create "${name}")
+    [[ -n "${expires_at}" ]] && args+=(--expiration "${expires_at}")
     [[ "${policy}" == unrestricted ]] && args+=(--unrestricted)
     openstack "${args[@]}" -f json >"${response}"
     credential_id=$(jq -er ".id // .ID" "${response}")

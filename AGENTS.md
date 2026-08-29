@@ -88,7 +88,7 @@ controllers/         controller Applications installed before KRO graphs
 
 ## Credentials
 
-- CSOC/Magnum: short-lived unrestricted
+- CSOC/Magnum: unrestricted; an intentionally non-expiring credential is supported
   `scripts/host/credentials/magnum-clouds.yaml`
 - Spoke provisioning/workloads: a different restricted credential at
   `scripts/host/credentials/accounts/<identity>/clouds.yaml`, even when the
