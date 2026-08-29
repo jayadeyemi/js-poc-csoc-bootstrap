@@ -107,7 +107,7 @@ for profile in dev staging prod; do
     CSOC_PROFILE=${profile}
     csoc::load_profile "${REPO_ROOT}"
     expected_revision="environment/${profile}"
-    [[ "${MAGNUM_CLUSTER_NAME}" == "js2-csoc-${profile}" \
+    [[ "${MAGNUM_CLUSTER_NAME}" == "js-csoc-${profile}" \
        && "${CSOC_BOOTSTRAP_REVISION}" == "${expected_revision}" \
        && "${CSOC_CATALOG_REVISION}" == "${expected_revision}" \
        && "${CSOC_FLEET_REVISION}" == "${expected_revision}" ]] \

@@ -42,7 +42,7 @@ file and never printed:
 make credential-create \
   SOURCE=/secure/seed-clouds.yaml \
   OUTPUT=scripts/host/credentials/magnum-clouds.yaml \
-  NAME=js2-csoc-dev-magnum-YYYYMMDD \
+  NAME=js-csoc-dev-magnum-YYYYMMDD \
   POLICY=unrestricted \
   EXPIRES_AT=YYYY-MM-DDTHH:MM:SSZ
 ```
