@@ -16,7 +16,7 @@ instances have been manually server-side dry-run/applied in dependency order.
 | `iac/csoc/profiles/dev.profile` | Retain the owned `js2-mgmt-cluster-2` state/kubeconfig paths and default-branch Git revisions. This file is tracked. |
 | `iac/csoc/profiles/prod.profile` | Before any production create, review the immutable three-member `m3.quad` control plane, distinct state/kubeconfig paths, and `release/prod` revisions. This file is tracked. |
 | `iac/magnum/cluster.env` | Review shared provider template, network, keypair, volume, and timeout settings. |
-| `scripts/host/credentials/magnum-clouds.yaml` | Copy its example, insert a short-lived unrestricted Magnum-only application credential, and set mode `0600`. |
+| `scripts/host/credentials/magnum-clouds.yaml` | Copy its example, insert an unrestricted Magnum-only application credential (non-expiring is supported), and set mode `0600`. |
 | `scripts/host/credentials/accounts/<identity>/clouds.yaml` | Create one different restricted credential per active spoke account, even when it uses the same project as CSOC; set mode `0600`. |
 | `js-poc-csoc-fleet/accounts/kustomization.yaml` | List only account directories that should be actively reconciled. An empty list creates no spokes. |
 | `js-poc-csoc-fleet/accounts/<identity>/identity-config.yaml` | Set reviewed write-once account, compute, network, storage, load-balancer, and Kubernetes restrictions. Never put secret names or values here. |

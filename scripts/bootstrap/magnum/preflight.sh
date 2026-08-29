@@ -46,7 +46,7 @@ fi
 log::step 1 "Checking separated OpenStack credentials and local state paths"
 credentials::require_private_file "${MAGNUM_CREDENTIAL_FILE}" Magnum
 MAGNUM_CREDENTIAL_JSON=$(credentials::metadata "${MAGNUM_CREDENTIAL_FILE}" "${OS_CLOUD}")
-credentials::require_unexpired "${MAGNUM_CREDENTIAL_JSON}" Magnum
+credentials::require_unexpired_if_set "${MAGNUM_CREDENTIAL_JSON}" Magnum
 [[ $(jq -r '.project_id' <<<"${MAGNUM_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" \
    && $(jq -r '.app_project_id' <<<"${MAGNUM_CREDENTIAL_JSON}") == "${MAGNUM_PROJECT_ID}" ]] \
   || log::die "Magnum credential is not scoped to expected project ${MAGNUM_PROJECT_ID}"

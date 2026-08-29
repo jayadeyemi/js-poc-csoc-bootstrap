@@ -75,7 +75,7 @@ Two separate application credentials are required even when CSOC and spoke share
 
 | File | Purpose |
 |------|---------|
-| `scripts/host/credentials/magnum-clouds.yaml` | Short-lived, unrestricted — Magnum create/delete only |
+| `scripts/host/credentials/magnum-clouds.yaml` | Unrestricted, optionally non-expiring — Magnum create/delete only |
 | `scripts/host/credentials/accounts/<identity>/clouds.yaml` | Restricted — CAPO, ORC, CCM, Cinder CSI |
 
 Neither file is tracked. Copy and fill in the examples, then `chmod 600` both files. See [scripts/host/credentials/README.md](scripts/host/credentials/README.md).
