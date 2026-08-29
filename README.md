@@ -8,7 +8,7 @@ instances to GitOps.
 
 | Profile | Magnum ownership | Git sources | Fleet |
 |---|---|---|---|
-| `dev` | New `js-csoc-dev`; 1 × `m3.small` control plane, 1 worker, 20-GiB roots | coordinated `environment/dev` | disabled; graphs only |
+| `dev` | New `js-csoc-dev`; 1 × `m3.quad` control plane, 1 worker, 20-GiB roots | coordinated `environment/dev` | disabled; graphs only |
 | `staging` | New `js-csoc-staging`; 3 × `m3.small` control plane, 2 workers, 20-GiB roots | coordinated `environment/staging` | assigned dev tuples |
 | `prod` | New `js-csoc-prod`; 3 × `m3.small` control plane, 3 workers, 20-GiB roots | coordinated `environment/prod` | prod and explicitly routed dev tuples |
 

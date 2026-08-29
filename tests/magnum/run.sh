@@ -56,7 +56,7 @@ expect_pass "cluster name supports an isolated environment override" \
   _ "${REPO_ROOT}/iac/magnum/cluster.env"
 
 expect_pass "dev profile isolates v2 graph development and disables fleet" \
-  bash -c 'unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR MAGNUM_MASTER_COUNT MAGNUM_MASTER_FLAVOR MAGNUM_NODE_COUNT MAGNUM_WORKER_FLAVOR MAGNUM_MIN_NODE_COUNT MAGNUM_MAX_NODE_COUNT MAGNUM_EXPECTED_INITIAL_NODES MAGNUM_BOOT_VOLUME_SIZE MAGNUM_AUTO_SCALING_ENABLED CSOC_BOOTSTRAP_REVISION CSOC_CATALOG_REVISION CSOC_FLEET_REVISION; source "$1"; csoc::load_profile "$2"; [[ "$MAGNUM_CLUSTER_NAME" == js-csoc-dev && "$MAGNUM_STATE_FILE" == "$2/.state/csoc/dev/magnum-cluster.json" && "$CSOC_CATALOG_REVISION" == environment/dev && "$CSOC_FLEET_ENABLED" == false && "$CSOC_API_GENERATION" == v2 && "$MAGNUM_BOOT_VOLUME_SIZE" == 20 ]]' \
+  bash -c 'unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR MAGNUM_MASTER_COUNT MAGNUM_MASTER_FLAVOR MAGNUM_NODE_COUNT MAGNUM_WORKER_FLAVOR MAGNUM_MIN_NODE_COUNT MAGNUM_MAX_NODE_COUNT MAGNUM_EXPECTED_INITIAL_NODES MAGNUM_BOOT_VOLUME_SIZE MAGNUM_AUTO_SCALING_ENABLED CSOC_BOOTSTRAP_REVISION CSOC_CATALOG_REVISION CSOC_FLEET_REVISION; source "$1"; csoc::load_profile "$2"; [[ "$MAGNUM_CLUSTER_NAME" == js-csoc-dev && "$MAGNUM_STATE_FILE" == "$2/.state/csoc/dev/magnum-cluster.json" && "$CSOC_CATALOG_REVISION" == environment/dev && "$CSOC_FLEET_ENABLED" == false && "$CSOC_API_GENERATION" == v2 && "$MAGNUM_MASTER_FLAVOR" == m3.quad && "$MAGNUM_BOOT_VOLUME_SIZE" == 20 ]]' \
   _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}"
 
 expect_pass "prod profile freezes an HA control plane and coordinated branch" \
@@ -108,7 +108,7 @@ expect_pass "provision submits the guide-exact create request" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/provision.sh"
 for required in \
   '--cluster-template 284de191-b8ea-4dae-9046-6ab982bd1c3a' \
-  '--master-count 1' '--node-count 1' '--master-flavor m3.small' '--flavor m3.quad' \
+  '--master-count 1' '--node-count 1' '--master-flavor m3.quad' '--flavor m3.quad' \
   '--fixed-network auto_allocated_network' '--fixed-subnet auto_allocated_subnet_v4' \
   '--floating-ip-enabled' '--master-lb-enabled' '--merge-labels' \
   '--labels boot_volume_size=20' '--labels auto_scaling_enabled=false' \

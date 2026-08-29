@@ -146,8 +146,8 @@ done
   == agent/bootstrap-candidate:agent/catalog-candidate ]] \
   || log::die "Candidate source revisions must override environment defaults without editing profiles"
 profile_probe='unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR MAGNUM_MASTER_COUNT MAGNUM_MASTER_FLAVOR MAGNUM_NODE_COUNT MAGNUM_WORKER_FLAVOR MAGNUM_MIN_NODE_COUNT MAGNUM_MAX_NODE_COUNT MAGNUM_EXPECTED_INITIAL_NODES MAGNUM_BOOT_VOLUME_SIZE MAGNUM_AUTO_SCALING_ENABLED; source "$1"; csoc::load_profile "$2"'
-[[ $(CSOC_PROFILE=dev bash -c "${profile_probe}; printf '%s:%s:%s' \"\$MAGNUM_BOOT_VOLUME_SIZE\" \"\$MAGNUM_MASTER_FLAVOR\" \"\$CSOC_FLEET_ENABLED\"" _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 20:m3.small:false ]] \
-  || log::die "Dev must use the small no-fleet profile"
+[[ $(CSOC_PROFILE=dev bash -c "${profile_probe}; printf '%s:%s:%s' \"\$MAGNUM_BOOT_VOLUME_SIZE\" \"\$MAGNUM_MASTER_FLAVOR\" \"\$CSOC_FLEET_ENABLED\"" _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 20:m3.quad:false ]] \
+  || log::die "Dev must use the quad no-fleet profile"
 [[ $(CSOC_PROFILE=staging bash -c "${profile_probe}; printf '%s:%s' \"\$MAGNUM_BOOT_VOLUME_SIZE\" \"\$CSOC_FLEET_ENABLED\"" _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 20:true ]] \
   || log::die "Staging sizing or fleet policy is incorrect"
 [[ $(CSOC_PROFILE=prod bash -c "${profile_probe}; printf '%s:%s:%s' \"\$MAGNUM_BOOT_VOLUME_SIZE\" \"\$MAGNUM_MASTER_COUNT\" \"\$CSOC_FLEET_ENABLED\"" _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 20:3:true ]] \
