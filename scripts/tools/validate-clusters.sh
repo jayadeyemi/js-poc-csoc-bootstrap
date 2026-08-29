@@ -103,10 +103,16 @@ for profile in "${profiles[@]}"; do
     || log::die "Profile ${profile} root manifest does not exist: ${root_manifest}"
 
   if [[ -f "${state}" ]]; then
-    jq -e --arg name "${name}" --arg template "${MAGNUM_TEMPLATE_ID}" \
+    if ! jq -e --arg name "${name}" --arg template "${MAGNUM_TEMPLATE_ID}" \
       '.cluster_id != "" and .cluster_name == $name and .template_id == $template' \
-      "${state}" >/dev/null \
-      || log::die "Profile ${profile} ownership state does not match its declared name/template"
+      "${state}" >/dev/null; then
+      legacy_name="csoc-${profile}"
+      jq -e --arg name "${legacy_name}" --arg template "${MAGNUM_TEMPLATE_ID}" \
+        '.cluster_id != "" and .cluster_name == $name and .template_id == $template' \
+        "${state}" >/dev/null \
+        || log::die "Profile ${profile} ownership state does not match its declared or legacy name/template"
+      log::warn "${profile}: legacy ownership state ${legacy_name} is retained; live preflight must block ${name} until retirement completes"
+    fi
   fi
   log::success "${profile}: ${name} declaration is internally consistent"
 done

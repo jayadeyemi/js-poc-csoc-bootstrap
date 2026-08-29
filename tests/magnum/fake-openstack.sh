@@ -5,7 +5,7 @@ set -euo pipefail
 args="$*"
 project="${FAKE_PROJECT_ID:-53f449a040d14cef8512b69e4ad521cd}"
 cluster_id="${FAKE_CLUSTER_ID:-11111111-2222-3333-4444-555555555555}"
-cluster_name="${MAGNUM_CLUSTER_NAME:-csoc-dev}"
+cluster_name="${MAGNUM_CLUSTER_NAME:-js2-csoc-dev}"
 master_flavor="${FAKE_MASTER_FLAVOR:-m3.small}"
 worker_flavor="${FAKE_WORKER_FLAVOR:-m3.quad}"
 boot_volume_size="${FAKE_BOOT_VOLUME_SIZE:-20}"
