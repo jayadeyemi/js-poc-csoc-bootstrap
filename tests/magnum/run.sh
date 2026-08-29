@@ -209,6 +209,16 @@ else
   printf 'ok - DELETE_IN_PROGRESS was not resubmitted\n'
   ((pass += 1))
 fi
+jq '.cluster_name = "csoc-dev"' "${MAGNUM_STATE_FILE}" >"${MAGNUM_STATE_FILE}.tmp"
+mv "${MAGNUM_STATE_FILE}.tmp" "${MAGNUM_STATE_FILE}"
+rm -f "${FAKE_DELETE_LOG}"
+FAKE_CLUSTER_NAME=csoc-dev FAKE_CLUSTER_EXISTS=true \
+  FAKE_CLUSTER_STATUS=DELETE_IN_PROGRESS MAGNUM_DELETE_TIMEOUT=0 \
+  expect_fail "delete monitors permitted legacy ownership without resubmitting" \
+  bash "${REPO_ROOT}/scripts/operations/magnum/delete-owned.sh" \
+    11111111-2222-3333-4444-555555555555
+[[ ! -e "${FAKE_DELETE_LOG}" ]] \
+  || { printf 'not ok - permitted legacy deletion was resubmitted\n'; ((fail += 1)); }
 
 printf '%s passed; %s failed\n' "${pass}" "${fail}"
 (( fail == 0 ))
