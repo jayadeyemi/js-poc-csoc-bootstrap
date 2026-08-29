@@ -3,7 +3,7 @@
 ## Environment invariants
 
 - Profiles are exactly `dev`, `staging`, and `prod`; their cluster names are
-  exactly `js2-csoc-dev`, `js2-csoc-staging`, and `js2-csoc-prod`.
+  exactly `js-csoc-dev`, `js-csoc-staging`, and `js-csoc-prod`.
 - Each profile tracks `environment/<profile>` in all three repositories and
   owns unique state, kubeconfig, credential, and container paths.
 - Dev installs controllers/RGDs only. Staging owns assigned dev tuples. Prod

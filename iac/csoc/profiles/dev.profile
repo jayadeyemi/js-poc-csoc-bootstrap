@@ -10,7 +10,7 @@ CSOC_ARGO_ROOT_MANIFEST_REL=iac/csoc/profiles/dev-app-of-apps.yaml
 CSOC_APPLICATION_DIR_REL=argocd/environments/dev/apps
 CSOC_FLEET_PATH=environments/dev
 
-MAGNUM_CLUSTER_NAME=${MAGNUM_CLUSTER_NAME:-js2-csoc-dev}
+MAGNUM_CLUSTER_NAME=${MAGNUM_CLUSTER_NAME:-js-csoc-dev}
 MAGNUM_STATE_FILE_REL=.state/csoc/dev/magnum-cluster.json
 MAGNUM_KUBECONFIG_DIR_REL=.state/csoc/dev/kubeconfigs
 MAGNUM_MASTER_COUNT=${MAGNUM_MASTER_COUNT:-1}

@@ -27,8 +27,8 @@ csoc::load_profile() {
     || { printf 'CSOC_API_GENERATION must be v1 or v2\n' >&2; return 65; }
   [[ "${CSOC_FLEET_PATH}" == "environments/${profile}" ]] \
     || { printf 'CSOC_FLEET_PATH must match the selected profile\n' >&2; return 65; }
-  [[ "${MAGNUM_CLUSTER_NAME}" == "js2-csoc-${profile}" ]] \
-    || { printf 'MAGNUM_CLUSTER_NAME must be js2-csoc-%s\n' "${profile}" >&2; return 65; }
+  [[ "${MAGNUM_CLUSTER_NAME}" == "js-csoc-${profile}" ]] \
+    || { printf 'MAGNUM_CLUSTER_NAME must be js-csoc-%s\n' "${profile}" >&2; return 65; }
 
   CSOC_PROFILE=${profile}
   MAGNUM_STATE_FILE=${MAGNUM_STATE_FILE:-"${repo_root}/${MAGNUM_STATE_FILE_REL}"}
