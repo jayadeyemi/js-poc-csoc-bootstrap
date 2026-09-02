@@ -102,6 +102,10 @@ controller_application_line=$(rg -n -F 'apply_profile_application csoc-controlle
   || die "Registration environment must exist before the controller Application"
 rg -q 'kubectl config view --raw --minify --flatten' "${bootstrap_script}" \
   || die "Registration environment must derive trust data from the exact management kubeconfig"
+rg -q 'if kubectl get application csoc-app-of-apps' "${bootstrap_script}" \
+  || die "First install must guard legacy root Application annotation cleanup"
+! rg -q 'annotate .*--ignore-not-found' "${bootstrap_script}" \
+  || die "kubectl annotate does not support --ignore-not-found"
 
 [[ $(yq -r '[.configs.params."controller.status.processors",
   .configs.params."controller.operation.processors",

@@ -311,8 +311,10 @@ fi
 # host-bootstrapped and intentionally renders only projects and child
 # Applications. Remove that stale marker before waiting so prune=false does not
 # leave the root permanently OutOfSync as an extraneous self-owned resource.
-kubectl annotate application csoc-app-of-apps -n argocd \
-  argocd.argoproj.io/tracking-id- >/dev/null
+if kubectl get application csoc-app-of-apps -n argocd >/dev/null 2>&1; then
+  kubectl annotate application csoc-app-of-apps -n argocd \
+    argocd.argoproj.io/tracking-id- >/dev/null
+fi
 apply_manifest "${APP_OF_APPS}"
 if [[ "${CSOC_FLEET_ENABLED}" == true && "${CSOC_BOOTSTRAP_FLEET_INSTANCES}" == false ]]; then
   # The parent is expected to own intentionally OutOfSync manual fleet apps.
