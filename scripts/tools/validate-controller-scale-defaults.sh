@@ -71,9 +71,11 @@ caaph_args=$(yq -r '.addon.helm.deployment.containers[] | select(.name == "manag
   ."kube-api-qps",."kube-api-burst"] | join(",")' <<<"${caaph_args}")   == "10,10,20,30" ]] || die "CAAPH defaults drifted"
 
 [[ $(yq -r '.spec.source.path' "${REPO_ROOT}/controllers/orc.yaml") == config/default ]]   || die "ORC must render the pinned Kustomize package"
-rg -q -- '--scope-cache-max-size=10' "${REPO_ROOT}/controllers/orc.yaml"   || die "ORC cache default is not exposed"
-rg -q 'image: quay.io/orc/openstack-resource-controller:v2.6.0' "${REPO_ROOT}/controllers/orc.yaml" \
-  || die "ORC config/default image is not pinned"
+orc_patch=$(yq -r '.spec.source.kustomize.patches[0].patch' "${REPO_ROOT}/controllers/orc.yaml")
+[[ $(yq -r '[.spec.template.spec.containers[0].image,
+  (.spec.template.spec.containers[0].args[] | select(. == "--scope-cache-max-size=10"))] | join(",")' \
+  <<<"${orc_patch}") == "quay.io/orc/openstack-resource-controller:v2.6.0,--scope-cache-max-size=10" ]] \
+  || die "ORC config/default image or cache patch is invalid"
 rg -q 'requests: \{cpu: 10m, memory: 64Mi\}' "${REPO_ROOT}/controllers/orc.yaml"   || die "ORC resource defaults are not exposed"
 
 [[ $(yq -r '[.configs.params."controller.status.processors",
