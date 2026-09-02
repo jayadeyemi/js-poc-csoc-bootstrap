@@ -121,7 +121,7 @@ cp "${evidence_dir}/latest-loadbalancers.json" "${evidence_dir}/before-loadbalan
 cp "${evidence_dir}/latest-volumes.json" "${evidence_dir}/before-volumes.json"
 
 for spoke in "${spoke_names[@]}"; do
-  existing=$(NAME="${spoke}" jq '[.[] | select(((.Name // .name // "") | startswith(strenv(NAME))))] | length'     "${evidence_dir}/latest-servers.json")
+  existing=$(jq --arg name "${spoke}" '[.[] | select(((.Name // .name // "") | startswith($name)))] | length'     "${evidence_dir}/latest-servers.json")
   (( existing == 0 )) || log::die "OpenStack servers already exist for ${spoke}"
 done
 
@@ -134,7 +134,7 @@ done
 
 verify_server_roots() {
   local spoke=$1 server_rows server_id volume_rows volume_id volume_json
-  server_rows=$(NAME="${spoke}" jq -r     '.[] | select(((.Name // .name // "") | startswith(strenv(NAME)))) | (.ID // .id)'     "${evidence_dir}/latest-servers.json")
+  server_rows=$(jq -r --arg name "${spoke}"     '.[] | select(((.Name // .name // "") | startswith($name))) | (.ID // .id)'     "${evidence_dir}/latest-servers.json")
   [[ -n "${server_rows}" ]] || return 1
   while IFS= read -r server_id; do
     volume_rows=$(openstack server volume list "${server_id}" -f json) || return 1
@@ -159,17 +159,17 @@ verify_server_roots() {
 spoke_openstack_ready() {
   local spoke=$1 expected=${expected_node_count[$1]} namespace lb_id
   local servers active networks subnets lbs
-  servers=$(NAME="${spoke}" jq '[.[] | select(((.Name // .name // "") | startswith(strenv(NAME))))] | length'     "${evidence_dir}/latest-servers.json")
-  active=$(NAME="${spoke}" jq '[.[] | select(((.Name // .name // "") | startswith(strenv(NAME))) and
+  servers=$(jq --arg name "${spoke}" '[.[] | select(((.Name // .name // "") | startswith($name)))] | length'     "${evidence_dir}/latest-servers.json")
+  active=$(jq --arg name "${spoke}" '[.[] | select(((.Name // .name // "") | startswith($name)) and
     ((.Status // .status // "") == "ACTIVE"))] | length' "${evidence_dir}/latest-servers.json")
-  networks=$(NAME="csoc-${spoke}" jq '[.[] | select((.Name // .name // "") == strenv(NAME))] | length'     "${evidence_dir}/latest-networks.json")
-  subnets=$(NAME="csoc-${spoke}" jq '[.[] | select((.Name // .name // "") == strenv(NAME))] | length'     "${evidence_dir}/latest-subnets.json")
+  networks=$(jq --arg name "csoc-${spoke}" '[.[] | select((.Name // .name // "") == $name)] | length'     "${evidence_dir}/latest-networks.json")
+  subnets=$(jq --arg name "csoc-${spoke}" '[.[] | select((.Name // .name // "") == $name)] | length'     "${evidence_dir}/latest-subnets.json")
   namespace="spokeclusters-${spoke}"
   lb_id=$(kubectl get openstackcluster "${spoke}" -n "${namespace}" -o json 2>/dev/null \
     | jq -r '.status.apiServerLoadBalancer.id // empty')
   [[ -n "${lb_id}" ]] || return 1
-  lbs=$(ID="${lb_id}" jq '[.[] | select(
-    ((.ID // .Id // .id // "") == strenv(ID)) and
+  lbs=$(jq --arg id "${lb_id}" '[.[] | select(
+    ((.ID // .Id // .id // "") == $id) and
     ((.provisioning_status // ."Provisioning Status" // "") == "ACTIVE") and
     ((.operating_status // ."Operating Status" // "") == "ONLINE"))] | length'     "${evidence_dir}/latest-loadbalancers.json")
   (( servers == expected && active == expected && networks == 1 && subnets == 1 && lbs == 1 ))     && verify_server_roots "${spoke}"
