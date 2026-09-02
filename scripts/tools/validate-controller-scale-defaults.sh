@@ -150,6 +150,14 @@ if [[ -f "${inventory}" ]]; then
     || die "benchmark preflight must use pinned-yq-compatible numeric sums"
   ! rg -q 'jq[^[:cntrl:]]*strenv\(' "${REPO_ROOT}/scripts/operations/benchmarks/run-v1-scale.sh" \
     || die "benchmark jq filters must use explicit --arg variables"
+  rg -q -- '--resume-evidence' "${REPO_ROOT}/scripts/operations/benchmarks/run-v1-scale.sh" \
+    || die "benchmark runner must support evidence-preserving verification resume"
+  rg -q '\.multiattach // \.Multiattach // false' \
+    "${REPO_ROOT}/scripts/operations/benchmarks/run-v1-scale.sh" \
+    || die "benchmark runner must treat an omitted multiattach flag as false"
+  rg -q '\.type == "Available" or \.type == "Ready"' \
+    "${REPO_ROOT}/scripts/operations/benchmarks/run-v1-scale.sh" \
+    || die "benchmark runner must accept CAPI v1beta2 Available readiness"
   bash -n "${REPO_ROOT}/scripts/operations/benchmarks/run-v1-scale.sh"
 fi
 

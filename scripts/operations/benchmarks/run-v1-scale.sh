@@ -18,8 +18,9 @@ export OS_CLOUD="${OS_CLOUD:-openstack}"
 
 phase=
 evidence_dir=
+resume=false
 usage() {
-  printf 'Usage: %s --phase single|batch [--evidence-dir DIR]\n' "$0" >&2
+  printf 'Usage: %s --phase single|batch [--evidence-dir DIR | --resume-evidence DIR]\n' "$0" >&2
   exit 64
 }
 while (( $# > 0 )); do
@@ -31,7 +32,15 @@ while (( $# > 0 )); do
       ;;
     --evidence-dir)
       (( $# >= 2 )) || usage
+      [[ -z "${evidence_dir}" ]] || usage
       evidence_dir=$2
+      shift 2
+      ;;
+    --resume-evidence)
+      (( $# >= 2 )) || usage
+      [[ -z "${evidence_dir}" ]] || usage
+      evidence_dir=$2
+      resume=true
       shift 2
       ;;
     *) usage ;;
@@ -40,7 +49,7 @@ done
 [[ "${phase}" == single || "${phase}" == batch ]] || usage
 [[ -f "${INVENTORY}" ]] || log::die "Benchmark inventory not found: ${INVENTORY}"
 
-for command_name in kubectl argocd openstack yq jq date sort awk; do
+for command_name in kubectl argocd openstack yq jq date sort awk realpath; do
   command -v "${command_name}" >/dev/null 2>&1     || log::die "Required command not found: ${command_name}"
 done
 
@@ -76,18 +85,36 @@ done
 (( expected_node_sum == expected_servers && expected_volumes == expected_servers && expected_lbs == expected_spokes && expected_networks == expected_spokes )) \
   || log::die "Benchmark expected-resource totals are internally inconsistent"
 
-# Credential preparation is outside the timer, as are all read-only capacity,
-# ownership, name, and CIDR checks.
-bash "${SCRIPT_DIR}/preflight-v1-scale.sh" "${phase}"
-
-timestamp=$(date -u +%Y%m%dT%H%M%SZ)
-evidence_dir=${evidence_dir:-"${REPO_ROOT}/.state/benchmarks/v1-scale/${timestamp}-${phase}"}
-mkdir -p "${evidence_dir}"
+evidence_root="${REPO_ROOT}/.state/benchmarks/v1-scale"
+if [[ "${resume}" == true ]]; then
+  [[ -n "${evidence_dir}" && -d "${evidence_dir}" ]] \
+    || log::die "--resume-evidence must name an existing evidence directory"
+  evidence_dir=$(realpath "${evidence_dir}")
+  case "${evidence_dir}" in
+    "${evidence_root}"/*) ;;
+    *) log::die "Resume evidence must be under ${evidence_root}" ;;
+  esac
+  [[ -s "${evidence_dir}/events.jsonl" ]] \
+    || log::die "Resume evidence is incomplete: events"
+  for kind in servers networks subnets loadbalancers volumes; do
+    [[ -s "${evidence_dir}/before-${kind}.json" ]] \
+      || log::die "Resume evidence is incomplete: before-${kind}"
+  done
+  [[ ! -e "${evidence_dir}/metrics.json" ]] \
+    || log::die "Benchmark evidence is already complete"
+else
+  # Credential preparation is outside the timer, as are all read-only capacity,
+  # ownership, name, and CIDR checks.
+  bash "${SCRIPT_DIR}/preflight-v1-scale.sh" "${phase}"
+  timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+  evidence_dir=${evidence_dir:-"${evidence_root}/${timestamp}-${phase}"}
+  mkdir -p "${evidence_dir}"
+fi
 chmod 700 "${evidence_dir}"
 events_file="${evidence_dir}/events.jsonl"
 summary_file="${evidence_dir}/summary.csv"
 metrics_file="${evidence_dir}/metrics.json"
-: >"${events_file}"
+[[ "${resume}" == true ]] || : >"${events_file}"
 
 selector="csoc.js2.org/benchmark-phase=${phase}"
 # Argo core mode discovers argocd-cm in the kube-context namespace. This is a
@@ -99,7 +126,10 @@ application_count=$(kubectl get applications.argoproj.io -n argocd -l "${selecto
 
 for spoke in "${spoke_names[@]}"; do
   namespace="spokeclusters-${spoke}"
-  if kubectl get spokecluster "${spoke}" -n "${namespace}" >/dev/null 2>&1; then
+  if [[ "${resume}" == true ]]; then
+    kubectl get spokecluster "${spoke}" -n "${namespace}" >/dev/null 2>&1 \
+      || log::die "Resume target ${namespace}/${spoke} does not exist"
+  elif kubectl get spokecluster "${spoke}" -n "${namespace}" >/dev/null 2>&1; then
     log::die "SpokeCluster ${namespace}/${spoke} already exists; refusing to falsify timing"
   fi
 done
@@ -112,18 +142,20 @@ snapshot_openstack() {
   openstack volume list --long -f json     >"${evidence_dir}/latest-volumes.json"
 }
 
-log::step 1 "Capturing before inventory for the ${phase} phase"
-snapshot_openstack || log::die "OpenStack inventory failed before the benchmark"
-cp "${evidence_dir}/latest-servers.json" "${evidence_dir}/before-servers.json"
-cp "${evidence_dir}/latest-networks.json" "${evidence_dir}/before-networks.json"
-cp "${evidence_dir}/latest-subnets.json" "${evidence_dir}/before-subnets.json"
-cp "${evidence_dir}/latest-loadbalancers.json" "${evidence_dir}/before-loadbalancers.json"
-cp "${evidence_dir}/latest-volumes.json" "${evidence_dir}/before-volumes.json"
+if [[ "${resume}" == false ]]; then
+  log::step 1 "Capturing before inventory for the ${phase} phase"
+  snapshot_openstack || log::die "OpenStack inventory failed before the benchmark"
+  cp "${evidence_dir}/latest-servers.json" "${evidence_dir}/before-servers.json"
+  cp "${evidence_dir}/latest-networks.json" "${evidence_dir}/before-networks.json"
+  cp "${evidence_dir}/latest-subnets.json" "${evidence_dir}/before-subnets.json"
+  cp "${evidence_dir}/latest-loadbalancers.json" "${evidence_dir}/before-loadbalancers.json"
+  cp "${evidence_dir}/latest-volumes.json" "${evidence_dir}/before-volumes.json"
 
-for spoke in "${spoke_names[@]}"; do
-  existing=$(jq --arg name "${spoke}" '[.[] | select(((.Name // .name // "") | startswith($name)))] | length'     "${evidence_dir}/latest-servers.json")
-  (( existing == 0 )) || log::die "OpenStack servers already exist for ${spoke}"
-done
+  for spoke in "${spoke_names[@]}"; do
+    existing=$(jq --arg name "${spoke}" '[.[] | select(((.Name // .name // "") | startswith($name)))] | length'     "${evidence_dir}/latest-servers.json")
+    (( existing == 0 )) || log::die "OpenStack servers already exist for ${spoke}"
+  done
+fi
 
 declare -A openstack_ready_at=()
 declare -A kubernetes_ready_at=()
@@ -144,7 +176,7 @@ verify_server_roots() {
     jq -e --arg sid "${server_id}" --arg project "${project_id}" '
       ((.status // .Status) == "in-use") and
       (((.bootable // .Bootable) | tostring | ascii_downcase) == "true") and
-      (((.multiattach // .Multiattach) | tostring | ascii_downcase) == "false") and
+      (((.multiattach // .Multiattach // false) | tostring | ascii_downcase) == "false") and
       (((.size // .Size) | tonumber) == 20) and
       ((.attachments // .Attachments) | type == "array") and
       (((.attachments // .Attachments) | length) == 1) and
@@ -181,7 +213,7 @@ spoke_kubernetes_ready() {
   min_workers=$(NAME="${spoke}" yq -r     '.spec.spokes[] | select(.name == strenv(NAME)) | .minWorkers' "${INVENTORY}")
   control_planes=$(NAME="${spoke}" yq -r     '.spec.spokes[] | select(.name == strenv(NAME)) | .controlPlanes' "${INVENTORY}")
   [[ $(kubectl get spokecluster "${spoke}" -n "${namespace}" -o json 2>/dev/null       | jq -r '.status.ready // false') == true ]] &&
-  [[ $(kubectl get cluster "${spoke}" -n "${namespace}" -o json 2>/dev/null       | jq -r '[.status.conditions[]? | select(.type == "Ready" and .status == "True")] | length') == 1 ]] &&
+  [[ $(kubectl get cluster "${spoke}" -n "${namespace}" -o json 2>/dev/null       | jq -r '[.status.conditions[]? | select((.type == "Available" or .type == "Ready") and .status == "True")] | length') -ge 1 ]] &&
   (( $(kubectl get kubeadmcontrolplane "${spoke}-control-plane" -n "${namespace}" -o json 2>/dev/null       | jq -r '.status.readyReplicas // 0') >= control_planes )) &&
   (( $(kubectl get machinedeployment "${spoke}-workers" -n "${namespace}" -o json 2>/dev/null       | jq -r '.status.readyReplicas // 0') >= min_workers ))
 }
@@ -254,11 +286,26 @@ verify_openstack_delta() {
     || log::die "Unexpected root-volume delta"
 }
 
-log::step 2 "Recording T0 and enqueueing ${expected_spokes} manual Argo sync operation(s)"
-start_epoch=$(date -u +%s)
-start_rfc3339=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-jq -nc --arg event benchmark-start --arg phase "${phase}" --arg time "${start_rfc3339}"   --argjson spokes "${expected_spokes}"   '{event:$event,phase:$phase,time:$time,spokes:$spokes}' >>"${events_file}"
-argocd --core app sync -l "${selector}" --async   >"${evidence_dir}/argocd-sync.txt"
+if [[ "${resume}" == true ]]; then
+  [[ $(jq -s --arg phase "${phase}" --argjson spokes "${expected_spokes}" \
+    '[.[] | select(.event == "benchmark-start" and .phase == $phase and .spokes == $spokes)] | length' \
+    "${events_file}") == 1 ]] || log::die "Resume evidence has no unique matching benchmark start"
+  [[ $(jq -s '[.[] | select(.event == "benchmark-timeout")] | length' "${events_file}") == 0 ]] \
+    || log::die "Timed-out evidence cannot be resumed"
+  start_rfc3339=$(jq -sr --arg phase "${phase}" \
+    '.[] | select(.event == "benchmark-start" and .phase == $phase) | .time' "${events_file}")
+  start_epoch=$(date -u -d "${start_rfc3339}" +%s)
+  jq -nc --arg event benchmark-resume --arg phase "${phase}" \
+    --arg time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{event:$event,phase:$phase,time:$time}' >>"${events_file}"
+  log::step 2 "Resuming ${phase} verification from original T0 ${start_rfc3339}; no sync submitted"
+else
+  log::step 2 "Recording T0 and enqueueing ${expected_spokes} manual Argo sync operation(s)"
+  start_epoch=$(date -u +%s)
+  start_rfc3339=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  jq -nc --arg event benchmark-start --arg phase "${phase}" --arg time "${start_rfc3339}"   --argjson spokes "${expected_spokes}"   '{event:$event,phase:$phase,time:$time,spokes:$spokes}' >>"${events_file}"
+  argocd --core app sync -l "${selector}" --async   >"${evidence_dir}/argocd-sync.txt"
+fi
 
 deadline=$((start_epoch + timeout_seconds))
 openstack_all_epoch=0
