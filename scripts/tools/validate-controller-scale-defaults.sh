@@ -158,6 +158,10 @@ if [[ -f "${inventory}" ]]; then
   rg -q '\.type == "Available" or \.type == "Ready"' \
     "${REPO_ROOT}/scripts/operations/benchmarks/run-v1-scale.sh" \
     || die "benchmark runner must accept CAPI v1beta2 Available readiness"
+  rg -q 'flock -n 9' "${REPO_ROOT}/scripts/operations/benchmarks/run-v1-scale.sh" \
+    || die "benchmark runner must lock its evidence directory"
+  rg -q 'type == "array"' "${REPO_ROOT}/scripts/operations/benchmarks/run-v1-scale.sh" \
+    || die "benchmark snapshots must reject truncated inventories"
   bash -n "${REPO_ROOT}/scripts/operations/benchmarks/run-v1-scale.sh"
 fi
 
