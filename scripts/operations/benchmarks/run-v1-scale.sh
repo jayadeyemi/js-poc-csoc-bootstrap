@@ -90,6 +90,10 @@ metrics_file="${evidence_dir}/metrics.json"
 : >"${events_file}"
 
 selector="csoc.js2.org/benchmark-phase=${phase}"
+# Argo core mode discovers argocd-cm in the kube-context namespace. This is a
+# local kubeconfig setting and occurs before T0; all cloud operations remain
+# untouched.
+kubectl config set-context "$(kubectl config current-context)" --namespace=argocd >/dev/null
 application_count=$(kubectl get applications.argoproj.io -n argocd -l "${selector}" -o json   | jq '.items | length')
 (( application_count == expected_spokes ))   || log::die "Expected ${expected_spokes} manual Argo Applications for ${phase}, found ${application_count}"
 

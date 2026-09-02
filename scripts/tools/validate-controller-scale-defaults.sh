@@ -107,6 +107,8 @@ if [[ -f "${inventory}" ]]; then
   [[ $(yq -r '.spec.syncPolicy.automated // "manual"'     "${REPO_ROOT}/argocd/environments/staging/apps/fleet.yaml") == manual ]]     || die "ordinary staging fleet Application must remain manual"
   rg -q '^CSOC_BOOTSTRAP_FLEET_INSTANCES=false$'     "${REPO_ROOT}/iac/csoc/profiles/staging.profile"     || die "staging bootstrap fleet boundary is not disabled"
   ! rg -q 'scale-[0-9][0-9]' "${FLEET_ROOT}/accounts/staging/kustomization.yaml"     || die "ordinary staging Kustomization includes benchmark tuples"
+  rg -q 'set-context.*--namespace=argocd' "${REPO_ROOT}/scripts/operations/benchmarks/run-v1-scale.sh" \
+    || die "benchmark runner must scope Argo core mode to the argocd namespace"
   bash -n "${REPO_ROOT}/scripts/operations/benchmarks/run-v1-scale.sh"
 fi
 
