@@ -148,6 +148,8 @@ if [[ -f "${inventory}" ]]; then
     || die "restricted benchmark credentials must not request all-tenant server or volume inventory"
   ! rg -q '\| add' "${REPO_ROOT}/scripts/operations/benchmarks/preflight-v1-scale.sh" \
     || die "benchmark preflight must use pinned-yq-compatible numeric sums"
+  ! rg -q 'jq[^[:cntrl:]]*strenv\(' "${REPO_ROOT}/scripts/operations/benchmarks/run-v1-scale.sh" \
+    || die "benchmark jq filters must use explicit --arg variables"
   bash -n "${REPO_ROOT}/scripts/operations/benchmarks/run-v1-scale.sh"
 fi
 
