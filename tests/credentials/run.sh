@@ -8,22 +8,24 @@ TEST_ROOT=$(mktemp -d)
 trap 'rm -rf -- "${TEST_ROOT}"' EXIT
 mkdir -p "${TEST_ROOT}/bin" "${TEST_ROOT}/accounts/account-a" \
   "${TEST_ROOT}/accounts/account-b" \
-  "${TEST_ROOT}/fleet/environments/staging/accounts/account-a/hello/dev" \
-  "${TEST_ROOT}/fleet/environments/staging/accounts/account-b/hello/dev" \
+  "${TEST_ROOT}/fleet/accounts/staging/accounts/account-a/hello/dev" \
+  "${TEST_ROOT}/fleet/accounts/staging/accounts/account-b/hello/dev" \
   "${TEST_ROOT}/kube-state"
 ln -s "${SCRIPT_DIR}/fake-openstack.sh" "${TEST_ROOT}/bin/openstack"
 ln -s "${SCRIPT_DIR}/fake-kubectl.sh" "${TEST_ROOT}/bin/kubectl"
 
 write_identity() {
-  local identity=$1 project=$2
+  local account=$1 identity=$2 project=$3
   printf '%s\n' \
     'apiVersion: csoc.js2.org/v1alpha1' \
     'kind: ImmutableSpokeConfig' \
     'metadata:' \
     "  name: ${identity}" \
+    '  labels:' \
+    "    csoc.js2.org/account: ${account}" \
     'spec:' \
     "  projectID: ${project}" \
-    >"${TEST_ROOT}/fleet/environments/staging/accounts/${identity}/hello/dev/identity-config.yaml"
+    >"${TEST_ROOT}/fleet/accounts/staging/accounts/${account}/hello/dev/identity-config.yaml"
 }
 
 write_cloud() {
@@ -55,8 +57,8 @@ write_magnum_cloud() {
   chmod 600 "${TEST_ROOT}/magnum-clouds.yaml"
 }
 
-write_identity account-a aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-write_identity account-b bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+write_identity account-a account-a-hello-dev aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+write_identity account-b account-b-hello-dev bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 write_cloud account-a
 write_cloud account-b
 write_magnum_cloud magnum-id
@@ -78,13 +80,15 @@ run_loader() {
 run_loader
 run_loader
 
-for identity in account-a account-b; do
+for account in account-a account-b; do
+  identity="${account}-hello-dev"
   namespace="spokeclusters-${identity}"
-  grep -F -- "${identity}-cloud-config --from-file=clouds.yaml=${TEST_ROOT}/accounts/${identity}/clouds.yaml --namespace ${namespace}" \
+  grep -F -- "${identity}-cloud-config --from-file=clouds.yaml=${TEST_ROOT}/accounts/${account}/clouds.yaml --namespace ${namespace}" \
     "${FAKE_KUBECTL_LOG}" >/dev/null
   grep -F -- "${identity}-workload-cloud-config --namespace ${namespace}" \
     "${FAKE_KUBECTL_LOG}" >/dev/null
   grep -F -- "csoc.js2.org/identity=${identity}" "${FAKE_KUBECTL_LOG}" >/dev/null
+  grep -F -- "csoc.js2.org/account=${account}" "${FAKE_KUBECTL_LOG}" >/dev/null
 done
 
 if rg -q 'account-(a|b)-never-print' "${TEST_ROOT}/stdout" "${TEST_ROOT}/stderr" "${FAKE_KUBECTL_LOG}"; then
@@ -106,6 +110,6 @@ if bash "${REPO_ROOT}/scripts/bootstrap/credentials/create-runtime-cloud-secret.
   exit 1
 fi
 
-printf 'ok - two identities load isolated restricted credentials idempotently\n'
+printf 'ok - account credentials load canonical tuple identities idempotently\n'
 printf 'ok - credential output is redacted and project mismatch is rejected\n'
 printf 'ok - spoke and Magnum application credential IDs must differ\n'

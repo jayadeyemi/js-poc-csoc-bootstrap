@@ -1,0 +1,307 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: csoc-v1-scale-00
+  namespace: argocd
+  labels:
+    csoc.js2.org/benchmark: v1-scale
+    csoc.js2.org/benchmark-phase: single
+    csoc.js2.org/spoke: scale-00-kubernetes-dev
+  annotations:
+    # Deliberately manual: the benchmark runner records T0 before requesting sync.
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: csoc-fleet
+  source:
+    repoURL: https://github.com/jayadeyemi/js-poc-csoc-fleet
+    targetRevision: environment/staging
+    path: accounts/staging/accounts/scale-00/kubernetes/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kro-system
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+  revisionHistoryLimit: 3
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: csoc-v1-scale-01
+  namespace: argocd
+  labels:
+    csoc.js2.org/benchmark: v1-scale
+    csoc.js2.org/benchmark-phase: batch
+    csoc.js2.org/spoke: scale-01-kubernetes-dev
+  annotations:
+    # Deliberately manual: the benchmark runner records T0 before requesting sync.
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: csoc-fleet
+  source:
+    repoURL: https://github.com/jayadeyemi/js-poc-csoc-fleet
+    targetRevision: environment/staging
+    path: accounts/staging/accounts/scale-01/kubernetes/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kro-system
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+  revisionHistoryLimit: 3
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: csoc-v1-scale-02
+  namespace: argocd
+  labels:
+    csoc.js2.org/benchmark: v1-scale
+    csoc.js2.org/benchmark-phase: batch
+    csoc.js2.org/spoke: scale-02-kubernetes-dev
+  annotations:
+    # Deliberately manual: the benchmark runner records T0 before requesting sync.
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: csoc-fleet
+  source:
+    repoURL: https://github.com/jayadeyemi/js-poc-csoc-fleet
+    targetRevision: environment/staging
+    path: accounts/staging/accounts/scale-02/kubernetes/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kro-system
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+  revisionHistoryLimit: 3
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: csoc-v1-scale-03
+  namespace: argocd
+  labels:
+    csoc.js2.org/benchmark: v1-scale
+    csoc.js2.org/benchmark-phase: batch
+    csoc.js2.org/spoke: scale-03-kubernetes-dev
+  annotations:
+    # Deliberately manual: the benchmark runner records T0 before requesting sync.
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: csoc-fleet
+  source:
+    repoURL: https://github.com/jayadeyemi/js-poc-csoc-fleet
+    targetRevision: environment/staging
+    path: accounts/staging/accounts/scale-03/kubernetes/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kro-system
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+  revisionHistoryLimit: 3
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: csoc-v1-scale-04
+  namespace: argocd
+  labels:
+    csoc.js2.org/benchmark: v1-scale
+    csoc.js2.org/benchmark-phase: batch
+    csoc.js2.org/spoke: scale-04-kubernetes-dev
+  annotations:
+    # Deliberately manual: the benchmark runner records T0 before requesting sync.
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: csoc-fleet
+  source:
+    repoURL: https://github.com/jayadeyemi/js-poc-csoc-fleet
+    targetRevision: environment/staging
+    path: accounts/staging/accounts/scale-04/kubernetes/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kro-system
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+  revisionHistoryLimit: 3
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: csoc-v1-scale-05
+  namespace: argocd
+  labels:
+    csoc.js2.org/benchmark: v1-scale
+    csoc.js2.org/benchmark-phase: batch
+    csoc.js2.org/spoke: scale-05-kubernetes-dev
+  annotations:
+    # Deliberately manual: the benchmark runner records T0 before requesting sync.
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: csoc-fleet
+  source:
+    repoURL: https://github.com/jayadeyemi/js-poc-csoc-fleet
+    targetRevision: environment/staging
+    path: accounts/staging/accounts/scale-05/kubernetes/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kro-system
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+  revisionHistoryLimit: 3
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: csoc-v1-scale-06
+  namespace: argocd
+  labels:
+    csoc.js2.org/benchmark: v1-scale
+    csoc.js2.org/benchmark-phase: batch
+    csoc.js2.org/spoke: scale-06-kubernetes-dev
+  annotations:
+    # Deliberately manual: the benchmark runner records T0 before requesting sync.
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: csoc-fleet
+  source:
+    repoURL: https://github.com/jayadeyemi/js-poc-csoc-fleet
+    targetRevision: environment/staging
+    path: accounts/staging/accounts/scale-06/kubernetes/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kro-system
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+  revisionHistoryLimit: 3
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: csoc-v1-scale-07
+  namespace: argocd
+  labels:
+    csoc.js2.org/benchmark: v1-scale
+    csoc.js2.org/benchmark-phase: batch
+    csoc.js2.org/spoke: scale-07-kubernetes-dev
+  annotations:
+    # Deliberately manual: the benchmark runner records T0 before requesting sync.
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: csoc-fleet
+  source:
+    repoURL: https://github.com/jayadeyemi/js-poc-csoc-fleet
+    targetRevision: environment/staging
+    path: accounts/staging/accounts/scale-07/kubernetes/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kro-system
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+  revisionHistoryLimit: 3
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: csoc-v1-scale-08
+  namespace: argocd
+  labels:
+    csoc.js2.org/benchmark: v1-scale
+    csoc.js2.org/benchmark-phase: batch
+    csoc.js2.org/spoke: scale-08-kubernetes-dev
+  annotations:
+    # Deliberately manual: the benchmark runner records T0 before requesting sync.
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: csoc-fleet
+  source:
+    repoURL: https://github.com/jayadeyemi/js-poc-csoc-fleet
+    targetRevision: environment/staging
+    path: accounts/staging/accounts/scale-08/kubernetes/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kro-system
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+  revisionHistoryLimit: 3
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: csoc-v1-scale-09
+  namespace: argocd
+  labels:
+    csoc.js2.org/benchmark: v1-scale
+    csoc.js2.org/benchmark-phase: batch
+    csoc.js2.org/spoke: scale-09-kubernetes-dev
+  annotations:
+    # Deliberately manual: the benchmark runner records T0 before requesting sync.
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: csoc-fleet
+  source:
+    repoURL: https://github.com/jayadeyemi/js-poc-csoc-fleet
+    targetRevision: environment/staging
+    path: accounts/staging/accounts/scale-09/kubernetes/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kro-system
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+  revisionHistoryLimit: 3
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: csoc-v1-scale-10
+  namespace: argocd
+  labels:
+    csoc.js2.org/benchmark: v1-scale
+    csoc.js2.org/benchmark-phase: batch
+    csoc.js2.org/spoke: scale-10-kubernetes-dev
+  annotations:
+    # Deliberately manual: the benchmark runner records T0 before requesting sync.
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: csoc-fleet
+  source:
+    repoURL: https://github.com/jayadeyemi/js-poc-csoc-fleet
+    targetRevision: environment/staging
+    path: accounts/staging/accounts/scale-10/kubernetes/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kro-system
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+  revisionHistoryLimit: 3

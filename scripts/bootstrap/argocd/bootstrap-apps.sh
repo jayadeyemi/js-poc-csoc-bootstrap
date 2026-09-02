@@ -47,7 +47,7 @@ PROJECT_DIR="${BOOTSTRAP_SOURCE}/argocd/projects"
 CONTROLLER_DIR="${BOOTSTRAP_SOURCE}/controllers"
 APPLICATION_DIR="${BOOTSTRAP_SOURCE}/${CSOC_APPLICATION_DIR_REL}"
 RGD_DIR="${CATALOG_SOURCE}/rgds"
-RGD_PACKAGE_DIR="${RGD_DIR}/test-poc"
+RGD_PACKAGE_DIR="${RGD_DIR}/v1-samples"
 FLEET_ENV_DIR="${FLEET_SOURCE}/${CSOC_FLEET_PATH}"
 ACCOUNTS_DIR="${FLEET_ENV_DIR}/accounts"
 GATE_CONFIGMAP=argocd-manual-manifest-gate
@@ -59,18 +59,32 @@ apply_manifest() {
 }
 
 wait_application() {
-  local application=$1 timeout=${2:-900s} attempts=0
+  local application=$1 timeout=${2:-900s} require_health=${3:-true} attempts=0
+  local reconciled_at
   until kubectl get application "${application}" -n argocd >/dev/null 2>&1; do
     (( attempts += 1 ))
     (( attempts < 60 )) || log::die "Application '${application}' was not created"
     sleep 5
   done
+  reconciled_at=$(kubectl get application "${application}" -n argocd \
+    -o jsonpath='{.status.reconciledAt}')
+  kubectl annotate application "${application}" -n argocd \
+    argocd.argoproj.io/refresh=hard --overwrite >/dev/null
+  attempts=0
+  until [[ $(kubectl get application "${application}" -n argocd \
+    -o jsonpath='{.status.reconciledAt}') != "${reconciled_at}" ]]; do
+    (( attempts += 1 ))
+    (( attempts < 150 )) || log::die "Application '${application}' did not hard-refresh"
+    sleep 2
+  done
   kubectl wait application "${application}" -n argocd \
     --for=jsonpath='{.status.sync.status}'=Synced --timeout="${timeout}" \
     || log::die "Application '${application}' did not become Synced"
-  kubectl wait application "${application}" -n argocd \
-    --for=jsonpath='{.status.health.status}'=Healthy --timeout="${timeout}" \
-    || log::die "Application '${application}' did not become Healthy"
+  if [[ "${require_health}" == true ]]; then
+    kubectl wait application "${application}" -n argocd \
+      --for=jsonpath='{.status.health.status}'=Healthy --timeout="${timeout}" \
+      || log::die "Application '${application}' did not become Healthy"
+  fi
 }
 
 wait_crd() {
@@ -206,8 +220,8 @@ apply_manifest "${RGD_PACKAGE_DIR}/cluster/v1/spoke-cluster.rgd.yaml"
 wait_rgd spokecluster
 wait_crd spokeclusters.csoc.js2.org
 
-log::step 5 "Manually applying profile-selected fleet instances in graph order"
-if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
+log::step 5 "Checking the profile-selected fleet activation boundary"
+if [[ "${CSOC_BOOTSTRAP_FLEET_INSTANCES}" == true ]]; then
   mapfile -t instance_dirs < <(
     find "${ACCOUNTS_DIR}" -type f -name cluster.yaml -printf '%h\n' | sort
   )
@@ -242,7 +256,7 @@ if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
   fi
   done
 else
-  log::info "${CSOC_PROFILE} deploys controllers and RGDs only; fleet instances are disabled"
+  log::info "${CSOC_PROFILE} owns fleet tuples, but bootstrap instance reconciliation is disabled"
 fi
 
 log::step 6 "Enabling Argo ownership only after manual resources are ready"
@@ -250,7 +264,7 @@ apply_profile_application csoc-controllers
 wait_application csoc-controllers
 apply_profile_application rgds
 wait_application rgds
-if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
+if [[ "${CSOC_BOOTSTRAP_FLEET_INSTANCES}" == true ]]; then
   apply_profile_application csoc-fleet
   wait_application csoc-fleet 1800s
 fi
@@ -262,6 +276,11 @@ fi
 kubectl annotate application csoc-app-of-apps -n argocd \
   argocd.argoproj.io/tracking-id- >/dev/null
 apply_manifest "${APP_OF_APPS}"
-wait_application csoc-app-of-apps
+if [[ "${CSOC_FLEET_ENABLED}" == true && "${CSOC_BOOTSTRAP_FLEET_INSTANCES}" == false ]]; then
+  # The parent is expected to own intentionally OutOfSync manual fleet apps.
+  wait_application csoc-app-of-apps 900s false
+else
+  wait_application csoc-app-of-apps
+fi
 
 log::success "Manual-first ${CSOC_PROFILE} handoff completed at bootstrap=${CSOC_BOOTSTRAP_REVISION}, catalog=${CSOC_CATALOG_REVISION}, fleet=${CSOC_FLEET_REVISION}."

@@ -10,10 +10,10 @@ spec:
   source:
     repoURL: https://github.com/jayadeyemi/js-poc-csoc-fleet
     targetRevision: environment/staging
-    path: environments/staging
+    path: accounts/staging
   destination:
     server: https://kubernetes.default.svc
     namespace: kro-system
   syncPolicy:
-    automated: {prune: false, selfHeal: true}
+    # Promotion-gated: creating this Application must not deploy ordinary tuples.
     syncOptions: [CreateNamespace=true, ServerSideApply=true, SkipDryRunOnMissingResource=true]

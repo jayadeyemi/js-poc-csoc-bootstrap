@@ -16,6 +16,7 @@ csoc::load_profile() {
   # overrides remain possible for isolated tests and reviewed operations.
   # shellcheck disable=SC1090
   source "${profile_file}"
+  CSOC_BOOTSTRAP_FLEET_INSTANCES=${CSOC_BOOTSTRAP_FLEET_INSTANCES:-${CSOC_FLEET_ENABLED}}
   # shellcheck source=iac/magnum/cluster.env
   source "${repo_root}/iac/magnum/cluster.env"
 
@@ -23,10 +24,14 @@ csoc::load_profile() {
     || { printf 'Profile identity mismatch in %s\n' "${profile_file}" >&2; return 65; }
   [[ "${CSOC_FLEET_ENABLED}" == true || "${CSOC_FLEET_ENABLED}" == false ]] \
     || { printf 'CSOC_FLEET_ENABLED must be true or false\n' >&2; return 65; }
-  [[ "${CSOC_FLEET_PATH}" == "environments/${profile}" ]] \
+  [[ "${CSOC_BOOTSTRAP_FLEET_INSTANCES}" == true || "${CSOC_BOOTSTRAP_FLEET_INSTANCES}" == false ]] \
+    || { printf 'CSOC_BOOTSTRAP_FLEET_INSTANCES must be true or false\n' >&2; return 65; }
+  [[ "${CSOC_BOOTSTRAP_FLEET_INSTANCES}" != true || "${CSOC_FLEET_ENABLED}" == true ]] \
+    || { printf 'Fleet bootstrap cannot be enabled for a no-fleet profile\n' >&2; return 65; }
+  [[ "${CSOC_FLEET_PATH}" == "accounts/${profile}" ]] \
     || { printf 'CSOC_FLEET_PATH must match the selected profile\n' >&2; return 65; }
-  [[ "${MAGNUM_CLUSTER_NAME}" == "csoc-${profile}" ]] \
-    || { printf 'MAGNUM_CLUSTER_NAME must be csoc-%s\n' "${profile}" >&2; return 65; }
+  [[ "${MAGNUM_CLUSTER_NAME}" == "js-csoc-${profile}" ]] \
+    || { printf 'MAGNUM_CLUSTER_NAME must be js-csoc-%s\n' "${profile}" >&2; return 65; }
 
   CSOC_PROFILE=${profile}
   MAGNUM_STATE_FILE=${MAGNUM_STATE_FILE:-"${repo_root}/${MAGNUM_STATE_FILE_REL}"}
@@ -34,6 +39,7 @@ csoc::load_profile() {
   CSOC_ARGO_ROOT_MANIFEST=${CSOC_ARGO_ROOT_MANIFEST:-"${repo_root}/${CSOC_ARGO_ROOT_MANIFEST_REL}"}
 
   export CSOC_PROFILE CSOC_PROFILE_NAME CSOC_FLEET_ENABLED
+  export CSOC_BOOTSTRAP_FLEET_INSTANCES
   export CSOC_BOOTSTRAP_REVISION CSOC_CATALOG_REVISION CSOC_FLEET_REVISION
   export CSOC_APPLICATION_DIR_REL CSOC_FLEET_PATH
   export MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR CSOC_ARGO_ROOT_MANIFEST

@@ -14,6 +14,16 @@ spec:
     helm:
       releaseName: capi-operator
       values: |
+        # The operator itself is single-replica. These are the pinned chart
+        # defaults and are exposed so controller capacity changes are reviewed.
+        replicaCount: 1
+        # Argo must own and update Provider CRs. The chart's Helm-hook default
+        # creates them once and leaves later deployment overrides stale.
+        enableHelmHook: false
+        resources:
+          manager:
+            limits: {cpu: 100m, memory: 300Mi}
+            requests: {cpu: 100m, memory: 100Mi}
         core:
           cluster-api:
             namespace: capi-system
@@ -22,26 +32,92 @@ spec:
             manager:
               featureGates:
                 ClusterTopology: true
+            deployment:
+              replicas: 1
+              containers:
+                - name: manager
+                  # Provider releases have no resource defaults.
+                  resources: {}
+                  args:
+                    # Object workers; raise only with API QPS/burst and capacity.
+                    "--cluster-concurrency": "10"
+                    "--machine-concurrency": "10"
+                    "--machineset-concurrency": "10"
+                    "--machinedeployment-concurrency": "10"
+                    "--clusterresourceset-concurrency": "10"
+                    # Workload-cluster cache initialization workers.
+                    "--clustercache-concurrency": "100"
+                    "--kube-api-qps": "20"
+                    "--kube-api-burst": "30"
+                    "--clustercache-client-qps": "20"
+                    "--clustercache-client-burst": "30"
         bootstrap:
           kubeadm:
             namespace: capi-kubeadm-bootstrap-system
             version: v1.12.11
             createNamespace: true
+            deployment:
+              replicas: 1
+              containers:
+                - name: manager
+                  resources: {}
+                  args:
+                    "--kubeadmconfig-concurrency": "10"
+                    "--clustercache-concurrency": "100"
+                    "--kube-api-qps": "20"
+                    "--kube-api-burst": "30"
+                    "--clustercache-client-qps": "20"
+                    "--clustercache-client-burst": "30"
         controlPlane:
           kubeadm:
             namespace: capi-kubeadm-control-plane-system
             version: v1.12.11
             createNamespace: true
+            deployment:
+              replicas: 1
+              containers:
+                - name: manager
+                  resources: {}
+                  args:
+                    "--kubeadmcontrolplane-concurrency": "10"
+                    "--clustercache-concurrency": "100"
+                    "--kube-api-qps": "20"
+                    "--kube-api-burst": "30"
+                    "--clustercache-client-qps": "20"
+                    "--clustercache-client-burst": "30"
         infrastructure:
           openstack:
             namespace: capo-system
             version: v0.14.7
             createNamespace: true
+            deployment:
+              replicas: 1
+              containers:
+                - name: manager
+                  resources: {}
+                  args:
+                    "--openstackcluster-concurrency": "10"
+                    "--openstackmachine-concurrency": "10"
+                    "--openstackmachinetemplate-concurrency": "10"
+                    # Number of distinct credential scopes cached by CAPO.
+                    "--scope-cache-max-size": "10"
+                    "--kube-api-qps": "20"
+                    "--kube-api-burst": "30"
         addon:
           helm:
             namespace: caaph-system
             version: v0.6.2
             createNamespace: true
+            deployment:
+              replicas: 1
+              containers:
+                - name: manager
+                  resources: {}
+                  args:
+                    "--helm-chart-proxy-concurrency": "10"
+                    "--helm-release-proxy-concurrency": "10"
+                    "--kube-api-qps": "20"
+                    "--kube-api-burst": "30"
   destination:
     server: https://kubernetes.default.svc
     namespace: capi-operator-system

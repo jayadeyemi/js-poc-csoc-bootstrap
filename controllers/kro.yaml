@@ -15,7 +15,31 @@ spec:
     helm:
       releaseName: kro
       values: |
-        replicaCount: 1
+        rbac:
+          mode: aggregation
+        deployment:
+          # One active leader; extra replicas would be standby with leader election.
+          replicaCount: 1
+          resources:
+            limits: {cpu: 1000m, memory: 1024Mi}
+            requests: {cpu: 256m, memory: 128Mi}
+        config:
+          # Kubernetes client throttling shared by KRO's controllers.
+          clientQps: 100
+          clientBurst: 150
+          # Definition and revision compilation are deliberately serialized.
+          resourceGraphDefinitionConcurrentReconciles: 1
+          graphRevisionConcurrentReconciles: 1
+          # Instance graph workers. This is the first knob to test after baseline.
+          dynamicControllerConcurrentReconciles: 1
+          dynamicControllerDefaultQueueMaxRetries: 20
+          dynamicControllerRateLimiterMinDelay: 200ms
+          dynamicControllerRateLimiterMaxDelay: 1000s
+          dynamicControllerRateLimiterRateLimit: 10
+          dynamicControllerRateLimiterBurstLimit: 100
+          instance:
+            # Fixed polling delay while downstream resources are settling.
+            requeueInterval: 3s
   destination:
     server: https://kubernetes.default.svc
     namespace: kro-system

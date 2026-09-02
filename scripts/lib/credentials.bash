@@ -75,3 +75,15 @@ credentials::require_unexpired() {
   (( expires_epoch > now_epoch )) \
     || log::die "${label} application credential expired at ${expires_at}"
 }
+
+# Magnum credentials may be intentionally non-expiring. When an expiration is
+# declared, retain the same strict timestamp and future-date validation used by
+# short-lived credentials.
+credentials::require_unexpired_if_set() {
+  local metadata=$1 label=$2 expires_at
+  expires_at=$(jq -r '.expires_at' <<<"${metadata}")
+  if [[ -z "${expires_at}" || "${expires_at}" == null || "${expires_at}" == None ]]; then
+    return 0
+  fi
+  credentials::require_unexpired "${metadata}" "${label}"
+}

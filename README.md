@@ -8,14 +8,25 @@ instances to GitOps.
 
 | Profile | Magnum ownership | Git sources | Fleet |
 |---|---|---|---|
-| `dev` | New `csoc-dev`; 1 × `m3.small` control plane, 1 worker, 20-GiB roots | coordinated `environment/dev` | disabled; graphs only |
-| `staging` | New `csoc-staging`; 3 × `m3.small` control plane, 2 workers, 20-GiB roots | coordinated `environment/staging` | assigned dev tuples |
-| `prod` | New `csoc-prod`; 3 × `m3.small` control plane, 3 workers, 20-GiB roots | coordinated `environment/prod` | prod and explicitly routed dev tuples |
+| `dev` | New `js-csoc-dev`; 1 × `m3.quad` control plane, 1 worker, 20-GiB roots | coordinated `environment/dev` | disabled; graphs only |
+| `staging` | New `js-csoc-staging`; 3 × `m3.small` control plane, 2 workers, 40-GiB roots | coordinated `environment/staging` | assigned dev tuples |
+| `prod` | New `js-csoc-prod`; 3 × `m3.small` control plane, 3 workers, 60-GiB roots | coordinated `environment/prod` | prod and explicitly routed dev tuples |
 
 All three profiles are declarations only: nothing creates them unless an
 operator explicitly authorizes and runs provisioning. The existing
 `js2-mgmt-cluster-2` remains a legacy staging migration source; it is not
 adopted, renamed, or shrunk in place.
+
+Staging keeps `CSOC_FLEET_ENABLED=true` because it owns account tuples, while
+`CSOC_BOOTSTRAP_FLEET_INSTANCES=false` prevents bootstrap from applying them.
+The ordinary fleet and scale benchmark Applications are manual; an explicit
+phase sync is therefore the provisioning and timing boundary.
+
+Readiness rejects extra node-volume attachments, non-bootable or multiattach
+roots, roots not attached only to the expected server, and visible
+cross-project ownership. Persistent application data remains on separate
+retained Cinder PVCs rather than these environment-tiered roots. Cinder-layer
+encryption is not asserted without a provider-confirmed encrypted volume type.
 
 ## Quick start
 
@@ -46,7 +57,7 @@ Git synchronization when the local containers are stopped.
 ## Bootstrap sequence
 
 ```
-A container-build    B magnum-provision   C magnum-wait
+A container-build    B magnum-provision   C magnum-wait + worker bounds
 D magnum-kubeconfig  E argocd-install     F capi-secret
 G argocd-bootstrap   ← Argo installs CAPI/CAPO from here
 ```
@@ -75,7 +86,7 @@ Two separate application credentials are required even when CSOC and spoke share
 
 | File | Purpose |
 |------|---------|
-| `scripts/host/credentials/magnum-clouds.yaml` | Short-lived, unrestricted — Magnum create/delete only |
+| `scripts/host/credentials/magnum-clouds.yaml` | Unrestricted, optionally non-expiring — Magnum create/delete only |
 | `scripts/host/credentials/accounts/<identity>/clouds.yaml` | Restricted — CAPO, ORC, CCM, Cinder CSI |
 
 Neither file is tracked. Copy and fill in the examples, then `chmod 600` both files. See [scripts/host/credentials/README.md](scripts/host/credentials/README.md).

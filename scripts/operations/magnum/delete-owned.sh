@@ -15,6 +15,11 @@ REQUESTED_ID=$1
 STATE_FILE="${MAGNUM_STATE_FILE:-${REPO_ROOT}/.state/magnum-cluster.json}"
 credentials::configure_magnum
 OWNED_ID=$(os::owned_cluster_id "${STATE_FILE}")
+OWNED_NAME=$(jq -er '.cluster_name' "${STATE_FILE}") \
+  || log::die "Ownership state has no cluster name: ${STATE_FILE}"
+LEGACY_NAME="csoc-${CSOC_PROFILE}"
+[[ "${OWNED_NAME}" == "${MAGNUM_CLUSTER_NAME}" || "${OWNED_NAME}" == "${LEGACY_NAME}" ]] \
+  || log::die "Ownership state name ${OWNED_NAME} is neither ${MAGNUM_CLUSTER_NAME} nor permitted legacy ${LEGACY_NAME}"
 [[ "${REQUESTED_ID}" == "${OWNED_ID}" ]] \
   || log::die "Requested UUID does not match owned UUID ${OWNED_ID}"
 if ! CLUSTER_JSON=$(openstack coe cluster show "${OWNED_ID}" -f json 2>/dev/null); then
@@ -22,8 +27,8 @@ if ! CLUSTER_JSON=$(openstack coe cluster show "${OWNED_ID}" -f json 2>/dev/null
   log::success "Owned cluster ${OWNED_ID} is absent and ownership state is removed"
   exit 0
 fi
-[[ $(jq -r '.name' <<<"${CLUSTER_JSON}") == "${MAGNUM_CLUSTER_NAME}" ]] \
-  || log::die "Owned UUID name changed; refusing deletion"
+[[ $(jq -r '.name' <<<"${CLUSTER_JSON}") == "${OWNED_NAME}" ]] \
+  || log::die "Owned UUID name no longer matches ownership state; refusing deletion"
 INITIAL_STATUS=$(jq -r '.status // "UNKNOWN"' <<<"${CLUSTER_JSON}")
 [[ "${INITIAL_STATUS}" != DELETE_FAILED ]] \
   || log::die "Owned cluster is already DELETE_FAILED; do not resend or remove finalizers"

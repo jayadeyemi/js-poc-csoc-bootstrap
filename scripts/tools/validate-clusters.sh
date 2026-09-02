@@ -103,10 +103,16 @@ for profile in "${profiles[@]}"; do
     || log::die "Profile ${profile} root manifest does not exist: ${root_manifest}"
 
   if [[ -f "${state}" ]]; then
-    jq -e --arg name "${name}" --arg template "${MAGNUM_TEMPLATE_ID}" \
+    if ! jq -e --arg name "${name}" --arg template "${MAGNUM_TEMPLATE_ID}" \
       '.cluster_id != "" and .cluster_name == $name and .template_id == $template' \
-      "${state}" >/dev/null \
-      || log::die "Profile ${profile} ownership state does not match its declared name/template"
+      "${state}" >/dev/null; then
+      legacy_name="csoc-${profile}"
+      jq -e --arg name "${legacy_name}" --arg template "${MAGNUM_TEMPLATE_ID}" \
+        '.cluster_id != "" and .cluster_name == $name and .template_id == $template' \
+        "${state}" >/dev/null \
+        || log::die "Profile ${profile} ownership state does not match its declared or legacy name/template"
+      log::warn "${profile}: legacy ownership state ${legacy_name} is retained; live preflight must block ${name} until retirement completes"
+    fi
   fi
   log::success "${profile}: ${name} declaration is internally consistent"
 done
@@ -127,7 +133,7 @@ while IFS= read -r -d '' yaml_file; do
         (( min_nodes >= 1 && min_nodes <= max_nodes )) \
           || log::die "SpokeCluster ${namespace}/${name} violates 1 <= minNodes <= maxNodes"
         key="${namespace}/${name}"
-        if [[ -n "${spoke_keys[${key}]:-}" && "${yaml_file}" == "${FLEET_ROOT}/environments/"* ]]; then
+        if [[ -n "${spoke_keys[${key}]:-}" && "${yaml_file}" == "${FLEET_ROOT}/accounts/"* ]]; then
           log::die "Active SpokeCluster ${key} is declared more than once"
         fi
         spoke_keys[${key}]="${yaml_file}"
@@ -150,7 +156,7 @@ while IFS= read -r -d '' yaml_file; do
     ' "${yaml_file}"
   )
 done < <(
-  find "${FLEET_ROOT}/environments" "${FLEET_ROOT}/examples" -type f \
+  find "${FLEET_ROOT}/accounts" "${FLEET_ROOT}/examples" -type f \
     \( -name '*.yaml' -o -name '*.yml' \) -print0
 )
 

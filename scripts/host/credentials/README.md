@@ -12,8 +12,9 @@ Application credentials are scoped, revocable, and do not expose your password.
 Create one CSOC bootstrap credential and one restricted spoke-provisioning
 credential per `SpokeIdentity`:
 
-- `magnum-clouds.yaml`: short expiry and **Unrestricted (dangerous)** enabled;
-  use only for Magnum create or reviewed delete operations.
+- `magnum-clouds.yaml`: **Unrestricted (dangerous)** enabled; an intentionally
+  non-expiring credential is supported. Use it only for Magnum create or
+  reviewed delete operations and protect the file as durable privileged state.
 - `accounts/<identity>/clouds.yaml`: unrestricted disabled; use only for CAPO, ORC,
   OpenStack CCM, Cinder CSI, and workload reconciliation in that account only.
 
@@ -42,13 +43,14 @@ file and never printed:
 make credential-create \
   SOURCE=/secure/seed-clouds.yaml \
   OUTPUT=scripts/host/credentials/magnum-clouds.yaml \
-  NAME=csoc-dev-magnum-YYYYMMDD \
-  POLICY=unrestricted \
-  EXPIRES_AT=YYYY-MM-DDTHH:MM:SSZ
+  NAME=js-csoc-dev-magnum-YYYYMMDD \
+  POLICY=unrestricted
 ```
 
-Use a unique name and output file for every CSOC environment. Use
-`POLICY=restricted` for account runtime credentials.
+Omit `EXPIRES_AT` to create the intentionally non-expiring Magnum credential.
+If an expiry is desired, add `EXPIRES_AT=YYYY-MM-DDTHH:MM:SSZ`. Use a unique
+name and output file for every CSOC environment. Restricted account runtime
+credentials still require `EXPIRES_AT`.
 
 ### 3. Supply to the management container
 
@@ -82,18 +84,26 @@ bash scripts/bootstrap/credentials/create-runtime-cloud-secret.sh test-poc
 bash scripts/bootstrap/credentials/create-runtime-cloud-secret.sh --all
 ```
 
-This creates `<identity>-cloud-config` and
-`<identity>-workload-cloud-config` only in `spokeclusters-<identity>`. The
-helper rejects unrestricted credentials and project mismatches.
+The argument and credential directory identify an account. For every trusted
+tuple owned by that account, this creates `<canonical-tuple>-cloud-config` and
+`<canonical-tuple>-workload-cloud-config` only in
+`spokeclusters-<canonical-tuple>`. The helper rejects unrestricted credentials,
+project mismatches, and account tuples that span projects.
+
+For the v1 scale benchmark, create eleven separate restricted credentials
+under `accounts/scale-00` through `accounts/scale-10`. They intentionally
+share the approved OpenStack project but must have different credential IDs
+and a 90-day expiration. Load all eleven before starting either timed phase;
+credential creation and Secret loading are not included in provisioning time.
 
 ---
 
 ## Security notes
 
 - Never inject `magnum-clouds.yaml` into Kubernetes or use it for a spoke.
-- Revoke the short-lived Magnum credential after the management cluster and
-  acceptance checks succeed. Create a new temporary unrestricted credential
-  for a future reviewed deletion.
+- Keep the non-expiring Magnum credential only in its mode-0600 host file,
+  mount it read-only, and never inject it into Kubernetes. Revoke it explicitly
+  when the environment is retired or the credential is replaced.
 - Rotate the restricted runtime credential independently and verify CAPO,
   LoadBalancer, and Cinder operations before revoking its predecessor.
 - Do not print `OS_*` variables or application credential creation output.

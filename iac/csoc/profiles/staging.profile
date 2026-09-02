@@ -2,21 +2,24 @@
 # tuples assigned to staging, initially test-poc/hello-app/dev.
 CSOC_PROFILE_NAME=staging
 CSOC_FLEET_ENABLED=true
+# Staging owns fleet tuples, but initial bootstrap must not reconcile them.
+# Manual benchmark Applications provide the explicit provisioning boundary.
+CSOC_BOOTSTRAP_FLEET_INSTANCES=false
 CSOC_BOOTSTRAP_REVISION=environment/staging
 CSOC_CATALOG_REVISION=environment/staging
 CSOC_FLEET_REVISION=environment/staging
 CSOC_ARGO_ROOT_MANIFEST_REL=iac/csoc/profiles/staging-app-of-apps.yaml
 CSOC_APPLICATION_DIR_REL=argocd/environments/staging/apps
-CSOC_FLEET_PATH=environments/staging
+CSOC_FLEET_PATH=accounts/staging
 
-MAGNUM_CLUSTER_NAME=${MAGNUM_CLUSTER_NAME:-csoc-staging}
+MAGNUM_CLUSTER_NAME=${MAGNUM_CLUSTER_NAME:-js-csoc-staging}
 MAGNUM_STATE_FILE_REL=.state/csoc/staging/magnum-cluster.json
 MAGNUM_KUBECONFIG_DIR_REL=.state/csoc/staging/kubeconfigs
 MAGNUM_MASTER_COUNT=${MAGNUM_MASTER_COUNT:-3}
 MAGNUM_MASTER_FLAVOR=${MAGNUM_MASTER_FLAVOR:-m3.small}
 MAGNUM_NODE_COUNT=${MAGNUM_NODE_COUNT:-2}
 MAGNUM_WORKER_FLAVOR=${MAGNUM_WORKER_FLAVOR:-m3.quad}
-MAGNUM_BOOT_VOLUME_SIZE=${MAGNUM_BOOT_VOLUME_SIZE:-20}
+MAGNUM_BOOT_VOLUME_SIZE=${MAGNUM_BOOT_VOLUME_SIZE:-40}
 MAGNUM_AUTO_SCALING_ENABLED=${MAGNUM_AUTO_SCALING_ENABLED:-false}
 MAGNUM_MIN_NODE_COUNT=${MAGNUM_MIN_NODE_COUNT:-2}
 MAGNUM_MAX_NODE_COUNT=${MAGNUM_MAX_NODE_COUNT:-2}
