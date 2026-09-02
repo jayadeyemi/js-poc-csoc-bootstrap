@@ -80,8 +80,12 @@ for spoke in "${phase_spokes[@]}"; do
 done
 
 log::step 2 "Checking compute, network, volume, and load-balancer headroom"
-control_planes=$(PHASE="${phase}" yq -r '[.spec.spokes[] | select(.phase == strenv(PHASE)) | .controlPlanes] | add' "${INVENTORY}")
-workers=$(PHASE="${phase}" yq -r '[.spec.spokes[] | select(.phase == strenv(PHASE)) | .minWorkers] | add' "${INVENTORY}")
+control_planes=$(PHASE="${phase}" yq -r \
+  '.spec.spokes[] | select(.phase == strenv(PHASE)) | .controlPlanes' "${INVENTORY}" \
+  | awk '{total += $1} END {print total + 0}')
+workers=$(PHASE="${phase}" yq -r \
+  '.spec.spokes[] | select(.phase == strenv(PHASE)) | .minWorkers' "${INVENTORY}" \
+  | awk '{total += $1} END {print total + 0}')
 required_instances=$((control_planes + workers))
 cp_flavor=$(openstack flavor show "$(yq -r '.spec.controlPlaneFlavor' "${INVENTORY}")" -f json)
 worker_flavor=$(openstack flavor show "$(yq -r '.spec.workerFlavor' "${INVENTORY}")" -f json)
