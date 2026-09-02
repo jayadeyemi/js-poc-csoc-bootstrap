@@ -52,23 +52,29 @@ capi_values=$(yq -r '.spec.source.helm.values' "${REPO_ROOT}/controllers/capi-op
   .resources.manager.requests.memory,.resources.manager.limits.cpu,
   .resources.manager.limits.memory] | join(",")' <<<"${capi_values}")   == "1,100m,100Mi,100m,300Mi" ]] || die "CAPI Operator defaults drifted"
 core_args=$(yq -r '.core.cluster-api.deployment.containers[] | select(.name == "manager") | .args' <<<"${capi_values}")
-[[ $(yq -r '[."cluster-concurrency",."machine-concurrency",
-  ."machineset-concurrency",."machinedeployment-concurrency",
-  ."clusterresourceset-concurrency",."clustercache-concurrency",
-  ."kube-api-qps",."kube-api-burst"] | join(",")' <<<"${core_args}")   == "10,10,10,10,10,100,20,30" ]] || die "CAPI core defaults drifted"
+[[ $(yq -r '[(."--cluster-concurrency"),( ."--machine-concurrency"),
+  (."--machineset-concurrency"),(."--machinedeployment-concurrency"),
+  (."--clusterresourceset-concurrency"),(."--clustercache-concurrency"),
+  (."--kube-api-qps"),(."--kube-api-burst")] | join(",")' <<<"${core_args}")   == "10,10,10,10,10,100,20,30" ]] || die "CAPI core defaults drifted"
 bootstrap_args=$(yq -r '.bootstrap.kubeadm.deployment.containers[] | select(.name == "manager") | .args' <<<"${capi_values}")
-[[ $(yq -r '[."kubeadmconfig-concurrency",."clustercache-concurrency",
-  ."kube-api-qps",."kube-api-burst"] | join(",")' <<<"${bootstrap_args}")   == "10,100,20,30" ]] || die "kubeadm bootstrap defaults drifted"
+[[ $(yq -r '[(."--kubeadmconfig-concurrency"),(."--clustercache-concurrency"),
+  (."--kube-api-qps"),(."--kube-api-burst")] | join(",")' <<<"${bootstrap_args}")   == "10,100,20,30" ]] || die "kubeadm bootstrap defaults drifted"
 control_plane_args=$(yq -r '.controlPlane.kubeadm.deployment.containers[] | select(.name == "manager") | .args' <<<"${capi_values}")
-[[ $(yq -r '[."kubeadmcontrolplane-concurrency",."clustercache-concurrency",
-  ."kube-api-qps",."kube-api-burst"] | join(",")' <<<"${control_plane_args}")   == "10,100,20,30" ]] || die "kubeadm control-plane defaults drifted"
+[[ $(yq -r '[(."--kubeadmcontrolplane-concurrency"),(."--clustercache-concurrency"),
+  (."--kube-api-qps"),(."--kube-api-burst")] | join(",")' <<<"${control_plane_args}")   == "10,100,20,30" ]] || die "kubeadm control-plane defaults drifted"
 capo_args=$(yq -r '.infrastructure.openstack.deployment.containers[] | select(.name == "manager") | .args' <<<"${capi_values}")
-[[ $(yq -r '[."openstackcluster-concurrency",."openstackmachine-concurrency",
-  ."openstackmachinetemplate-concurrency",."scope-cache-max-size",
-  ."kube-api-qps",."kube-api-burst"] | join(",")' <<<"${capo_args}")   == "10,10,10,10,20,30" ]] || die "CAPO defaults drifted"
+[[ $(yq -r '[(."--openstackcluster-concurrency"),(."--openstackmachine-concurrency"),
+  (."--openstackmachinetemplate-concurrency"),(."--scope-cache-max-size"),
+  (."--kube-api-qps"),(."--kube-api-burst")] | join(",")' <<<"${capo_args}")   == "10,10,10,10,20,30" ]] || die "CAPO defaults drifted"
 caaph_args=$(yq -r '.addon.helm.deployment.containers[] | select(.name == "manager") | .args' <<<"${capi_values}")
-[[ $(yq -r '[."helm-chart-proxy-concurrency",."helm-release-proxy-concurrency",
-  ."kube-api-qps",."kube-api-burst"] | join(",")' <<<"${caaph_args}")   == "10,10,20,30" ]] || die "CAAPH defaults drifted"
+[[ $(yq -r '[(."--helm-chart-proxy-concurrency"),(."--helm-release-proxy-concurrency"),
+  (."--kube-api-qps"),(."--kube-api-burst")] | join(",")' <<<"${caaph_args}")   == "10,10,20,30" ]] || die "CAAPH defaults drifted"
+
+bad_provider_flags=$(yq -r '[.core.cluster-api,.bootstrap.kubeadm,.controlPlane.kubeadm,
+  .infrastructure.openstack,.addon.helm][]
+  | .deployment.containers[] | select(.name == "manager") | .args | keys[]' \
+  <<<"${capi_values}" | rg -v '^--' || true)
+[[ -z "${bad_provider_flags}" ]] || die "CAPI provider arguments must be literal --flags"
 
 [[ $(yq -r '.spec.source.path' "${REPO_ROOT}/controllers/orc.yaml") == config/default ]]   || die "ORC must render the pinned Kustomize package"
 [[ $(yq -r '.spec.source.kustomize.patches[0].target.name' "${REPO_ROOT}/controllers/orc.yaml") == controller-manager ]] \
