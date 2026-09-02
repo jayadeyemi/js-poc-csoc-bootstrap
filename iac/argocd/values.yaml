@@ -14,34 +14,8 @@ repoServer:
   replicas: 1
   # Upstream default: no request/limit. Exposed for benchmark tuning.
   resources: {}
-  extraContainers:
-    - name: csoc-sops-helm
-      image: ghcr.io/jayadeyemi/csoc-sops-helm-cmp:0.1.0
-      imagePullPolicy: IfNotPresent
-      command: [/var/run/argocd/argocd-cmp-server]
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 10001
-        runAsGroup: 10001
-        allowPrivilegeEscalation: false
-        readOnlyRootFilesystem: true
-        capabilities: {drop: [ALL]}
-      resources:
-        requests: {cpu: 50m, memory: 128Mi}
-        limits: {cpu: 500m, memory: 512Mi}
-      volumeMounts:
-        - {name: var-files, mountPath: /var/run/argocd}
-        - {name: plugins, mountPath: /home/argocd/cmp-server/plugins}
-        - {name: csoc-cmp-plugin, mountPath: /home/argocd/cmp-server/config/plugin.yaml, subPath: plugin.yaml, readOnly: true}
-        - {name: csoc-cmp-tmp, mountPath: /tmp}
-        - {name: csoc-age, mountPath: /home/argocd/.config/sops/age, readOnly: true}
-  volumes:
-    - name: csoc-cmp-plugin
-      configMap: {name: csoc-sops-helm-plugin}
-    - name: csoc-cmp-tmp
-      emptyDir: {medium: Memory, sizeLimit: 256Mi}
-    - name: csoc-age
-      secret: {secretName: argocd-cmp-age-dev}
+  # The CMP sidecar stays disabled until its verified image is published by
+  # immutable digest. Controller and RGD sources do not require that plugin.
 
 applicationSet:
   replicas: 0
@@ -139,24 +113,3 @@ configs:
       hs.status = obj.status and obj.status.ready == true and "Healthy" or "Progressing"
       hs.message = obj.status and obj.status.health or "Waiting for Argo application"
       return hs
-
-extraObjects:
-  - apiVersion: v1
-    kind: ConfigMap
-    metadata:
-      name: csoc-sops-helm-plugin
-      namespace: argocd
-    data:
-      plugin.yaml: |
-        apiVersion: argoproj.io/v1alpha1
-        kind: ConfigManagementPlugin
-        metadata:
-          name: csoc-sops-helm
-        spec:
-          version: v1.0
-          discover:
-            fileName: .csoc-cmp
-          generate:
-            command: [/usr/local/bin/csoc-cmp-generate]
-          preserveFileMode: false
-          provideGitCreds: false
