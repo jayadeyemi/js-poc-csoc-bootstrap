@@ -19,12 +19,13 @@ spec:
             group: apps
             version: v1
             kind: Deployment
-            name: orc-controller-manager
+            # Match the upstream name before config/default adds `orc-`.
+            name: controller-manager
           patch: |-
             apiVersion: apps/v1
             kind: Deployment
             metadata:
-              name: orc-controller-manager
+              name: controller-manager
             spec:
               replicas: 1
               template:
