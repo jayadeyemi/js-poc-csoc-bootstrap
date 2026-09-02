@@ -9,6 +9,8 @@ FLEET_ROOT="${FLEET_ROOT:-${WORKSPACE_ROOT}/js-poc-csoc-fleet}"
 INVENTORY="${BENCHMARK_INVENTORY:-${FLEET_ROOT}/accounts/staging/benchmarks/v1-scale/inventory.yaml}"
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/scripts/lib/logging.bash"
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/scripts/lib/credentials.bash"
 
 phase=${1:-}
 [[ "${phase}" == single || "${phase}" == batch ]] || {
@@ -33,13 +35,19 @@ credential_root=/run/csoc-credentials/accounts
 declare -A credential_ids=()
 for account in "${phase_accounts[@]}"; do
   credential="${credential_root}/${account}/clouds.yaml"
+  credential_metadata=
   [[ -f "${credential}" && $(stat -c '%a' "${credential}") == 600 ]] \
     || log::die "Missing mode-0600 credential for ${account}"
-  credential_project=$(yq -er '.clouds.openstack.auth.project_id' "${credential}")
-  credential_id=$(yq -er '.clouds.openstack.auth.application_credential_id' "${credential}")
+  credential_metadata=$(credentials::metadata "${credential}" openstack)
+  credentials::require_unexpired "${credential_metadata}" "${account} benchmark"
+  credential_project=$(jq -er '.project_id' <<<"${credential_metadata}")
+  credential_id=$(jq -er '.id' <<<"${credential_metadata}")
   yq -e '.clouds.openstack.auth.application_credential_secret | length > 0' "${credential}" >/dev/null \
     || log::die "Credential secret is absent for ${account}"
   [[ "${credential_project}" == "${project_id}" ]] || log::die "Credential project mismatch for ${account}"
+  [[ $(jq -r '.app_project_id == .project_id and .unrestricted == false' \
+      <<<"${credential_metadata}") == true ]] \
+    || log::die "Credential for ${account} must be restricted to ${project_id}"
   [[ -z "${credential_ids[${credential_id}]:-}" ]] || log::die "Application credential is reused by two benchmark accounts"
   credential_ids[${credential_id}]=${account}
 done

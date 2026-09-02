@@ -136,6 +136,12 @@ if [[ -f "${inventory}" ]]; then
   ! rg -q 'scale-[0-9][0-9]' "${FLEET_ROOT}/accounts/staging/kustomization.yaml"     || die "ordinary staging Kustomization includes benchmark tuples"
   rg -q 'set-context.*--namespace=argocd' "${REPO_ROOT}/scripts/operations/benchmarks/run-v1-scale.sh" \
     || die "benchmark runner must scope Argo core mode to the argocd namespace"
+  rg -q 'credentials::metadata' "${REPO_ROOT}/scripts/operations/benchmarks/preflight-v1-scale.sh" \
+    || die "benchmark preflight must verify live credential metadata"
+  rg -q 'credentials::require_unexpired' "${REPO_ROOT}/scripts/operations/benchmarks/preflight-v1-scale.sh" \
+    || die "benchmark preflight must reject expired credentials"
+  ! rg -q 'auth\.project_id' "${REPO_ROOT}/scripts/operations/benchmarks/preflight-v1-scale.sh" \
+    || die "benchmark preflight must derive the project from authenticated metadata"
   bash -n "${REPO_ROOT}/scripts/operations/benchmarks/run-v1-scale.sh"
 fi
 
