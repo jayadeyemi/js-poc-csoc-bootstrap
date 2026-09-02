@@ -21,6 +21,20 @@ die() {
   || die "legacy v2 catalog package still contains files"
 ! rg -q 'rgds/(test-poc|v2)(/|$)' "${REPO_ROOT}/scripts" "${CATALOG_ROOT}"   || die "legacy catalog path is still referenced"
 
+spoke_cluster_rgd="${CATALOG_ROOT}/rgds/v1-samples/cluster/v1/spoke-cluster.rgd.yaml"
+[[ $(yq -r '.spec.resources[] | select(.id == "cluster") |
+  [.template.apiVersion, .template.spec.infrastructureRef.apiGroup,
+   .template.spec.controlPlaneRef.apiGroup,
+   (.template.spec.infrastructureRef | has("apiVersion")),
+   (.template.spec.infrastructureRef | has("namespace")),
+   (.template.spec.controlPlaneRef | has("apiVersion")),
+   (.template.spec.controlPlaneRef | has("namespace"))] | join(",")' \
+  "${spoke_cluster_rgd}") == \
+  "cluster.x-k8s.io/v1beta2,infrastructure.cluster.x-k8s.io,controlplane.cluster.x-k8s.io,false,false,false,false" ]] \
+  || die "v1 SpokeCluster must render the storage-native CAPI v1beta2 Cluster reference shape"
+rg -Fq 'c.type == "Available" || c.type == "Ready"' "${spoke_cluster_rgd}" \
+  || die "v1 SpokeCluster must accept CAPI v1beta2 Available readiness"
+
 waves=$(
   for definition in \
     immutable-spoke-config:-16 \
