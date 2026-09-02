@@ -105,11 +105,11 @@ for spoke in "${spoke_names[@]}"; do
 done
 
 snapshot_openstack() {
-  openstack server list --project "${project_id}" --long -f json     >"${evidence_dir}/latest-servers.json" &&
+  openstack server list --long -f json     >"${evidence_dir}/latest-servers.json" &&
   openstack network list --project "${project_id}" -f json     >"${evidence_dir}/latest-networks.json" &&
   openstack subnet list --project "${project_id}" -f json     >"${evidence_dir}/latest-subnets.json" &&
   openstack loadbalancer list --project "${project_id}" -f json     >"${evidence_dir}/latest-loadbalancers.json" &&
-  openstack volume list --project "${project_id}" --long -f json     >"${evidence_dir}/latest-volumes.json"
+  openstack volume list --long -f json     >"${evidence_dir}/latest-volumes.json"
 }
 
 log::step 1 "Capturing before inventory for the ${phase} phase"
