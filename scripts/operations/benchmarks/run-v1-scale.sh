@@ -49,7 +49,7 @@ done
 [[ "${phase}" == single || "${phase}" == batch ]] || usage
 [[ -f "${INVENTORY}" ]] || log::die "Benchmark inventory not found: ${INVENTORY}"
 
-for command_name in kubectl argocd openstack yq jq date sort awk realpath; do
+for command_name in kubectl argocd openstack yq jq date sort awk realpath flock; do
   command -v "${command_name}" >/dev/null 2>&1     || log::die "Required command not found: ${command_name}"
 done
 
@@ -111,6 +111,8 @@ else
   mkdir -p "${evidence_dir}"
 fi
 chmod 700 "${evidence_dir}"
+exec 9>"${evidence_dir}/.runner.lock"
+flock -n 9 || log::die "Another verifier is already using ${evidence_dir}"
 events_file="${evidence_dir}/events.jsonl"
 summary_file="${evidence_dir}/summary.csv"
 metrics_file="${evidence_dir}/metrics.json"
@@ -135,11 +137,17 @@ for spoke in "${spoke_names[@]}"; do
 done
 
 snapshot_openstack() {
+  local kind
   openstack server list --long -f json     >"${evidence_dir}/latest-servers.json" &&
   openstack network list --project "${project_id}" -f json     >"${evidence_dir}/latest-networks.json" &&
   openstack subnet list --project "${project_id}" -f json     >"${evidence_dir}/latest-subnets.json" &&
   openstack loadbalancer list --project "${project_id}" -f json     >"${evidence_dir}/latest-loadbalancers.json" &&
-  openstack volume list --long -f json     >"${evidence_dir}/latest-volumes.json"
+  openstack volume list --long -f json     >"${evidence_dir}/latest-volumes.json" \
+    || return 1
+  for kind in servers networks subnets loadbalancers volumes; do
+    jq -e 'type == "array"' "${evidence_dir}/latest-${kind}.json" >/dev/null \
+      || return 1
+  done
 }
 
 if [[ "${resume}" == false ]]; then
