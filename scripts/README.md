@@ -46,7 +46,9 @@ separate because they inspect provider state or perform gated cleanup.
 - `operations/benchmarks/run-v1-scale.sh --phase single|batch`: enqueue the
   manual staging v1 benchmark Applications and record actual OpenStack plus
   Kubernetes readiness. It refuses existing phase resources, captures
-  diagnostics on timeout, and never submits cleanup.
+  diagnostics on timeout, and never submits cleanup. If the local verifier is
+  interrupted, `--resume-evidence DIR` continues observation from the original
+  T0 without re-syncing or accepting a different evidence directory.
 - `operations/benchmarks/preflight-v1-scale.sh single|batch`: read-only
   credential isolation, ownership, name/CIDR, and cloud quota headroom gate;
   the timed runner invokes it before recording T0.
