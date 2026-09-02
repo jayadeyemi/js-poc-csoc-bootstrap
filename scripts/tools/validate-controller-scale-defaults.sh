@@ -95,6 +95,13 @@ first_rgd_line=$(rg -n -F 'apply_manifest "${RGD_PACKAGE_DIR}/configmaps/immutab
   || die "KRO aggregate RBAC must be effective before the first generated API is compiled"
 rg -q 'kubectl auth can-i.*\\' "${bootstrap_script}" \
   || die "KRO aggregate RBAC readiness check is missing"
+registration_environment_line=$(rg -n -F 'ensure_registration_environment' "${bootstrap_script}" | tail -1 | cut -d: -f1)
+controller_application_line=$(rg -n -F 'apply_profile_application csoc-controllers' "${bootstrap_script}" | cut -d: -f1)
+[[ -n "${registration_environment_line}" && -n "${controller_application_line}" \
+   && "${registration_environment_line}" -lt "${controller_application_line}" ]] \
+  || die "Registration environment must exist before the controller Application"
+rg -q 'kubectl config view --raw --minify --flatten' "${bootstrap_script}" \
+  || die "Registration environment must derive trust data from the exact management kubeconfig"
 
 [[ $(yq -r '[.configs.params."controller.status.processors",
   .configs.params."controller.operation.processors",
