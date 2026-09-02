@@ -65,7 +65,7 @@ for account in "${phase_accounts[@]}"; do
   [[ "${matches}" == 1 ]] || log::die "Ownership is not unique for ${account}/kubernetes/dev"
 done
 
-servers=$(openstack server list --project "${project_id}" -f json)
+servers=$(openstack server list -f json)
 networks=$(openstack network list --project "${project_id}" -f json)
 subnets=$(openstack subnet list --project "${project_id}" -f json)
 loadbalancers=$(openstack loadbalancer list --project "${project_id}" -f json)

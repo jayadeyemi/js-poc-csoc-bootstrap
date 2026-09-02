@@ -142,6 +142,10 @@ if [[ -f "${inventory}" ]]; then
     || die "benchmark preflight must reject expired credentials"
   ! rg -q 'auth\.project_id' "${REPO_ROOT}/scripts/operations/benchmarks/preflight-v1-scale.sh" \
     || die "benchmark preflight must derive the project from authenticated metadata"
+  ! rg -q 'server list --project|volume list --project' \
+      "${REPO_ROOT}/scripts/operations/benchmarks/preflight-v1-scale.sh" \
+      "${REPO_ROOT}/scripts/operations/benchmarks/run-v1-scale.sh" \
+    || die "restricted benchmark credentials must not request all-tenant server or volume inventory"
   bash -n "${REPO_ROOT}/scripts/operations/benchmarks/run-v1-scale.sh"
 fi
 
