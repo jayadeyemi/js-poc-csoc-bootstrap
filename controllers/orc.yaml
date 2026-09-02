@@ -29,13 +29,13 @@ spec:
               replicas: 1
               template:
                 spec:
-            containers:
-              - name: manager
-                # config/default carries a development placeholder; keep the
-                # release image pinned to the selected ORC tag.
-                image: quay.io/orc/openstack-resource-controller:v2.6.0
-                imagePullPolicy: IfNotPresent
-                args:
+                  containers:
+                    - name: manager
+                      # config/default carries a development placeholder; keep
+                      # the release image pinned to the selected ORC tag.
+                      image: quay.io/orc/openstack-resource-controller:v2.6.0
+                      imagePullPolicy: IfNotPresent
+                      args:
                         - --metrics-bind-address=:8443
                         - --leader-elect
                         - --health-probe-bind-address=:8081
