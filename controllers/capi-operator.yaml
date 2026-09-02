@@ -17,6 +17,9 @@ spec:
         # The operator itself is single-replica. These are the pinned chart
         # defaults and are exposed so controller capacity changes are reviewed.
         replicaCount: 1
+        # Argo must own and update Provider CRs. The chart's Helm-hook default
+        # creates them once and leaves later deployment overrides stale.
+        enableHelmHook: false
         resources:
           manager:
             limits: {cpu: 100m, memory: 300Mi}

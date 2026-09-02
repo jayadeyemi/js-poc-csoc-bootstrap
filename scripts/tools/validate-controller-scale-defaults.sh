@@ -51,6 +51,8 @@ capi_values=$(yq -r '.spec.source.helm.values' "${REPO_ROOT}/controllers/capi-op
 [[ $(yq -r '[.replicaCount,.resources.manager.requests.cpu,
   .resources.manager.requests.memory,.resources.manager.limits.cpu,
   .resources.manager.limits.memory] | join(",")' <<<"${capi_values}")   == "1,100m,100Mi,100m,300Mi" ]] || die "CAPI Operator defaults drifted"
+[[ $(yq -r '.enableHelmHook' <<<"${capi_values}") == false ]] \
+  || die "CAPI Provider CRs must remain Argo-managed rather than one-shot Helm hooks"
 core_args=$(yq -r '.core.cluster-api.deployment.containers[] | select(.name == "manager") | .args' <<<"${capi_values}")
 [[ $(yq -r '[(."--cluster-concurrency"),( ."--machine-concurrency"),
   (."--machineset-concurrency"),(."--machinedeployment-concurrency"),
