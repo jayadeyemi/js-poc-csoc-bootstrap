@@ -170,6 +170,19 @@ apply_manifest "${CONTROLLER_DIR}/kro.yaml"
 wait_application kro
 wait_crd resourcegraphdefinitions.kro.run
 
+# KRO runs in aggregation mode. Grant its dynamic controllers access to every
+# generated CSOC API before the first RGD creates one; otherwise the generated
+# CRD can exist while KRO's watch cache repeatedly fails authorization.
+apply_manifest "${CONTROLLER_DIR}/kro-v2-rbac.yaml"
+attempts=0
+until [[ $(kubectl auth can-i \
+    --as=system:serviceaccount:kro-system:kro \
+    list immutablespokeconfigs.csoc.js2.org 2>/dev/null) == yes ]]; do
+  (( attempts += 1 ))
+  (( attempts < 60 )) || log::die "KRO CSOC aggregate RBAC did not become effective"
+  sleep 2
+done
+
 log::step 4 "Manually applying RGD definitions in dependency order"
 apply_manifest "${RGD_PACKAGE_DIR}/configmaps/immutable-spoke-config.rgd.yaml"
 wait_rgd immutablespokeconfig

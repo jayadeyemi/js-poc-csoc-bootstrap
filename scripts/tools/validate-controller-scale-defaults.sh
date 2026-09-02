@@ -88,6 +88,14 @@ orc_patch=$(yq -r '.spec.source.kustomize.patches[0].patch' "${REPO_ROOT}/contro
   || die "ORC config/default image or cache patch is invalid"
 rg -q 'requests: \{cpu: 10m, memory: 64Mi\}' "${REPO_ROOT}/controllers/orc.yaml"   || die "ORC resource defaults are not exposed"
 
+bootstrap_script="${REPO_ROOT}/scripts/bootstrap/argocd/bootstrap-apps.sh"
+kro_rbac_line=$(rg -n -F 'apply_manifest "${CONTROLLER_DIR}/kro-v2-rbac.yaml"' "${bootstrap_script}" | cut -d: -f1)
+first_rgd_line=$(rg -n -F 'apply_manifest "${RGD_PACKAGE_DIR}/configmaps/immutable-spoke-config.rgd.yaml"' "${bootstrap_script}" | cut -d: -f1)
+[[ -n "${kro_rbac_line}" && -n "${first_rgd_line}" && "${kro_rbac_line}" -lt "${first_rgd_line}" ]] \
+  || die "KRO aggregate RBAC must be effective before the first generated API is compiled"
+rg -q 'kubectl auth can-i.*\\' "${bootstrap_script}" \
+  || die "KRO aggregate RBAC readiness check is missing"
+
 [[ $(yq -r '[.configs.params."controller.status.processors",
   .configs.params."controller.operation.processors",
   .configs.params."controller.kubectl.parallelism.limit",
