@@ -84,10 +84,22 @@ publish_registration_environment() {
 
 wait_application() {
   local application=$1 timeout=${2:-900s} attempts=0
+  local reconciled_at
   until kubectl get application "${application}" -n argocd >/dev/null 2>&1; do
     (( attempts += 1 ))
     (( attempts < 60 )) || log::die "Application '${application}' was not created"
     sleep 5
+  done
+  reconciled_at=$(kubectl get application "${application}" -n argocd \
+    -o jsonpath='{.status.reconciledAt}')
+  kubectl annotate application "${application}" -n argocd \
+    argocd.argoproj.io/refresh=hard --overwrite >/dev/null
+  attempts=0
+  until [[ $(kubectl get application "${application}" -n argocd \
+    -o jsonpath='{.status.reconciledAt}') != "${reconciled_at}" ]]; do
+    (( attempts += 1 ))
+    (( attempts < 150 )) || log::die "Application '${application}' did not hard-refresh"
+    sleep 2
   done
   kubectl wait application "${application}" -n argocd \
     --for=jsonpath='{.status.sync.status}'=Synced --timeout="${timeout}" \
