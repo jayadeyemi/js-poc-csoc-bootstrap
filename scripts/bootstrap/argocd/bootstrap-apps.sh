@@ -58,6 +58,30 @@ apply_manifest() {
     --field-manager="${ARGO_FIELD_MANAGER}" -f "$1"
 }
 
+ensure_registration_environment() {
+  local kubeconfig_json server ca_data ca_sha256
+  kubeconfig_json=$(kubectl config view --raw --minify --flatten -o json)
+  server=$(jq -er '.clusters[0].cluster.server' <<<"${kubeconfig_json}") \
+    || log::die "Management kubeconfig has no API server"
+  ca_data=$(jq -er '.clusters[0].cluster."certificate-authority-data"' \
+    <<<"${kubeconfig_json}") \
+    || log::die "Management kubeconfig has no embedded CA"
+  [[ "${server}" == https://* ]] \
+    || log::die "Management API server must use HTTPS"
+  ca_sha256=$(printf '%s' "${ca_data}" | base64 -d | sha256sum | cut -d' ' -f1) \
+    || log::die "Management kubeconfig CA is not valid base64"
+
+  kubectl create namespace cluster-registration --dry-run=client -o yaml \
+    | kubectl apply --server-side --field-manager="${ARGO_FIELD_MANAGER}" -f - >/dev/null
+  kubectl create configmap csoc-registration-environment \
+    --namespace cluster-registration \
+    --from-literal="server=${server}" \
+    --from-literal="caData=${ca_data}" \
+    --from-literal="caSHA256=${ca_sha256}" \
+    --dry-run=client -o yaml \
+    | kubectl apply --server-side --field-manager="${ARGO_FIELD_MANAGER}" -f - >/dev/null
+}
+
 wait_application() {
   local application=$1 timeout=${2:-900s} require_health=${3:-true} attempts=0
   local reconciled_at
@@ -273,6 +297,7 @@ else
 fi
 
 log::step 6 "Enabling Argo ownership only after manual resources are ready"
+ensure_registration_environment
 apply_profile_application csoc-controllers
 wait_application csoc-controllers
 apply_profile_application rgds
