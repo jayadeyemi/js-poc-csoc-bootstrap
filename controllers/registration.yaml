@@ -1,0 +1,694 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cluster-registration
+  annotations: {argocd.argoproj.io/sync-wave: "-19"}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spoke-registration-controller
+  namespace: cluster-registration
+  annotations: {argocd.argoproj.io/sync-wave: "-18"}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spoke-registration-controller
+  annotations: {argocd.argoproj.io/sync-wave: "-18"}
+rules:
+  - apiGroups: [infra.csoc.js2.org]
+    resources: [spokeregistrations, workloadclusters, clusterfoundations]
+    verbs: [get, list, watch, patch, update]
+  - apiGroups: [infra.csoc.js2.org]
+    resources: [spokeregistrations/finalizers]
+    verbs: [update, patch]
+  - apiGroups: [services.csoc.js2.org]
+    resources: [smokeapplications, jupyterhubinstances, monitoringinstances, registrycacheinstances, binderbuildinstances, jupyteroutpostinstances]
+    verbs: [get, list, watch]
+  - apiGroups: [delivery.csoc.js2.org]
+    resources: [applicationboundaries, endpointbindings, hubauthbindings, secretbundles, cinderstoragebindings, cephfsaddons, cephfsvolumebindings, s3csiaddons, s3volumebindings, gpuruntimeaddons]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, create, update, patch, delete]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [rolebindings]
+    verbs: [get, create, update, patch, delete]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [clusterroles]
+    resourceNames: [csoc-cluster-autoscaler-management]
+    verbs: [get, bind]
+  - apiGroups: [certificates.k8s.io]
+    resources: [certificatesigningrequests]
+    verbs: [get, create, delete]
+  - apiGroups: [certificates.k8s.io]
+    resources: [certificatesigningrequests/approval]
+    verbs: [update]
+  - apiGroups: [certificates.k8s.io]
+    resources: [signers]
+    resourceNames: [kubernetes.io/kube-apiserver-client]
+    verbs: [approve]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spoke-registration-controller
+  annotations: {argocd.argoproj.io/sync-wave: "-18"}
+subjects:
+  - {kind: ServiceAccount, name: spoke-registration-controller, namespace: cluster-registration}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: spoke-registration-controller}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: csoc-cluster-autoscaler-management
+  annotations: {argocd.argoproj.io/sync-wave: "-18"}
+rules:
+  - apiGroups: [cluster.x-k8s.io]
+    resources: [clusters, machines, machinedeployments, machinesets]
+    verbs: [get, list, watch]
+  - apiGroups: [cluster.x-k8s.io]
+    resources: [machinedeployments, machinedeployments/scale]
+    verbs: [get, update, patch]
+  - apiGroups: [infrastructure.cluster.x-k8s.io]
+    resources: [openstackmachinetemplates]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: spoke-registration-controller
+  namespace: argocd
+  annotations: {argocd.argoproj.io/sync-wave: "-18"}
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, create, update, patch, delete]
+  - apiGroups: [argoproj.io]
+    resources: [applications, appprojects]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: spoke-registration-controller
+  namespace: argocd
+  annotations: {argocd.argoproj.io/sync-wave: "-18"}
+subjects:
+  - {kind: ServiceAccount, name: spoke-registration-controller, namespace: cluster-registration}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: spoke-registration-controller}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spoke-registration-controller
+  namespace: cluster-registration
+  annotations: {argocd.argoproj.io/sync-wave: "-18"}
+data:
+  reconcile.sh: |
+    #!/bin/sh
+    set -eu
+    WORK_ROOT=${CSOC_REGISTRATION_WORK_ROOT:-/work}
+    FINALIZER=registration.csoc.js2.org/credential-protection
+    RENEW_SECONDS=2592000
+    : "${MANAGEMENT_SERVER:?management API endpoint is required}"
+    : "${MANAGEMENT_CA_DATA:?management API CA is required}"
+    : "${MANAGEMENT_CA_SHA256:?management API CA fingerprint is required}"
+    actual_management_ca_sha256=$(printf '%s' "$MANAGEMENT_CA_DATA" | base64 -d | sha256sum | cut -d' ' -f1)
+    [ "$actual_management_ca_sha256" = "$MANAGEMENT_CA_SHA256" ] || {
+      echo "management API CA fingerprint mismatch" >&2
+      exit 1
+    }
+
+    annotate() {
+      ns=$1 name=$2 registered=$3 message=$4
+      kubectl annotate spokeregistration "$name" -n "$ns" --overwrite \
+        "registration.csoc.js2.org/registered=${registered}" \
+        "registration.csoc.js2.org/message=${message}" >/dev/null
+    }
+
+    references_cluster() {
+      ns=$1 cluster=$2
+      boundaries=$(kubectl get applicationboundaries -n "$ns" -o json 2>/dev/null || printf '{"items":[]}')
+      printf '%s' "$boundaries" \
+        | jq -r --arg cluster "$cluster" '.items[] | select(.status.clusterName == $cluster) | "applicationboundary/\(.metadata.name)"'
+      kubectl get clusterfoundations -n "$ns" -o json 2>/dev/null \
+        | jq -r --arg cluster "$cluster" '.items[] | select(.spec.clusterRef.name == $cluster) | "clusterfoundation/\(.metadata.name)"'
+      for resource in endpointbindings hubauthbindings secretbundles cinderstoragebindings cephfsaddons cephfsvolumebindings s3csiaddons s3volumebindings gpuruntimeaddons smokeapplications jupyterhubinstances monitoringinstances registrycacheinstances binderbuildinstances jupyteroutpostinstances; do
+        kubectl get "$resource" -n "$ns" -o json 2>/dev/null \
+          | jq -r --arg cluster "$cluster" --arg resource "$resource" --argjson boundaries "$boundaries" \
+              '.items[] | select(
+                (.spec.clusterRef.name // "") == $cluster or
+                (.metadata.labels["csoc.js2.org/workload-cluster"] // "") == $cluster or
+                ((.spec.boundaryRef.name // "") as $boundary |
+                  any($boundaries.items[]; .metadata.name == $boundary and .status.clusterName == $cluster))
+              ) | "\($resource)/\(.metadata.name)"'
+      done
+      kubectl get applications,appprojects -n argocd -l "csoc.js2.org/workload-cluster=${cluster}" -o name 2>/dev/null || true
+    }
+
+    ensure_spoke_rbac() {
+      kubeconfig=$1 username=$2 platform_username=$3 monitoring_username=$4 management_namespace=$5 cluster_name=$6 registration=$7
+      app_role="csoc-central-argocd-${registration}-application"
+      platform_role="csoc-central-argocd-${registration}-platform"
+      monitoring_role="csoc-central-argocd-${registration}-monitoring"
+      kubectl --kubeconfig "$kubeconfig" apply --server-side -f - >/dev/null <<EOF
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: ${app_role}
+      labels: {csoc.js2.org/registration: ${registration}}
+    rules:
+      - apiGroups: [""]
+        resources: [configmaps, secrets, services, serviceaccounts, persistentvolumeclaims]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [apps]
+        resources: [deployments, statefulsets, daemonsets]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [batch]
+        resources: [jobs]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [networking.k8s.io]
+        resources: [networkpolicies]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [policy]
+        resources: [poddisruptionbudgets]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [rbac.authorization.k8s.io]
+        resources: [roles, rolebindings]
+        verbs: [get, list, watch, create, update, patch, delete]
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: ${platform_role}
+      labels: {csoc.js2.org/registration: ${registration}}
+    rules:
+      - apiGroups: [""]
+        resources: [namespaces, configmaps, secrets, services, serviceaccounts]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [apps]
+        resources: [deployments, daemonsets]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [batch]
+        resources: [jobs]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [policy]
+        resources: [poddisruptionbudgets]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [rbac.authorization.k8s.io]
+        resources: [roles, rolebindings, clusterroles, clusterrolebindings]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [apiextensions.k8s.io]
+        resources: [customresourcedefinitions]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [storage.k8s.io]
+        resources: [storageclasses, csidrivers]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [operator.tigera.io]
+        resources: [installations, apiservers, goldmanes, whiskers]
+        verbs: [get, list, watch, create, update, patch, delete]
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: ${monitoring_role}
+      labels: {csoc.js2.org/registration: ${registration}}
+    rules:
+      - apiGroups: [""]
+        resources: [configmaps, secrets, services, serviceaccounts, persistentvolumeclaims]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [apps]
+        resources: [deployments, statefulsets, daemonsets]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [batch]
+        resources: [jobs]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [rbac.authorization.k8s.io]
+        resources: [roles, rolebindings, clusterroles, clusterrolebindings]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [apiextensions.k8s.io]
+        resources: [customresourcedefinitions]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [admissionregistration.k8s.io]
+        resources: [mutatingwebhookconfigurations, validatingwebhookconfigurations]
+        verbs: [get, list, watch, create, update, patch, delete]
+      - apiGroups: [monitoring.coreos.com]
+        resources: [prometheuses, prometheusrules, servicemonitors]
+        verbs: [get, list, watch, create, update, patch, delete]
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: ${platform_role}
+      labels: {csoc.js2.org/registration: ${registration}}
+    subjects:
+      - kind: User
+        name: ${platform_username}
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: ${platform_role}
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: ${monitoring_role}
+      labels: {csoc.js2.org/registration: ${registration}}
+    subjects:
+      - kind: User
+        name: ${monitoring_username}
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: ${monitoring_role}
+    EOF
+      kubectl get applicationboundaries -n "$management_namespace" \
+        -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.clusterName}{"\t"}{.spec.destinationNamespace}{"\n"}{end}' \
+        | while IFS="$(printf '\t')" read -r boundary boundary_cluster destination_namespace; do
+            [ "$boundary_cluster" = "$cluster_name" ] || continue
+            kubectl --kubeconfig "$kubeconfig" apply --server-side -f - >/dev/null <<EOF
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: ${destination_namespace}
+      labels:
+        csoc.js2.org/application-boundary: ${boundary}
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: ${app_role}
+      namespace: ${destination_namespace}
+      labels: {csoc.js2.org/registration: ${registration}}
+    subjects:
+      - kind: User
+        name: ${username}
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: ${app_role}
+    EOF
+          done
+    }
+
+    issue_certificate() {
+      kubeconfig=$1 namespace=$2 registration=$3 username=$4 output_dir=$5
+      openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$output_dir/client.key" >/dev/null 2>&1
+      openssl req -new -key "$output_dir/client.key" -subj "/CN=${username}" -out "$output_dir/client.csr"
+      csr_name="csoc-argocd-${registration}-$(date +%s)"
+      request=$(base64 <"$output_dir/client.csr" | tr -d '\n')
+      kubectl --kubeconfig "$kubeconfig" apply -f - >/dev/null <<EOF
+    apiVersion: certificates.k8s.io/v1
+    kind: CertificateSigningRequest
+    metadata:
+      name: ${csr_name}
+    spec:
+      signerName: kubernetes.io/kube-apiserver-client
+      expirationSeconds: 7776000
+      request: ${request}
+      usages: [client auth]
+    EOF
+      kubectl --kubeconfig "$kubeconfig" certificate approve "$csr_name" >/dev/null
+      attempts=0
+      while [ "$attempts" -lt 30 ]; do
+        kubectl --kubeconfig "$kubeconfig" get csr "$csr_name" -o jsonpath='{.status.certificate}' 2>/dev/null | base64 -d >"$output_dir/client.crt" || true
+        [ -s "$output_dir/client.crt" ] && break
+        attempts=$((attempts + 1))
+        sleep 2
+      done
+      kubectl --kubeconfig "$kubeconfig" delete csr "$csr_name" --wait=false >/dev/null
+      [ -s "$output_dir/client.crt" ]
+    }
+
+    issue_management_certificate() {
+      registration=$1 username=$2 output_dir=$3
+      openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$output_dir/autoscaler.key" >/dev/null 2>&1
+      openssl req -new -key "$output_dir/autoscaler.key" -subj "/CN=${username}" -out "$output_dir/autoscaler.csr"
+      csr_name="csoc-autoscaler-${registration}-$(date +%s)"
+      request=$(base64 <"$output_dir/autoscaler.csr" | tr -d '\n')
+      kubectl apply -f - >/dev/null <<EOF
+    apiVersion: certificates.k8s.io/v1
+    kind: CertificateSigningRequest
+    metadata:
+      name: ${csr_name}
+    spec:
+      signerName: kubernetes.io/kube-apiserver-client
+      expirationSeconds: 7776000
+      request: ${request}
+      usages: [client auth]
+    EOF
+      kubectl certificate approve "$csr_name" >/dev/null
+      attempts=0
+      while [ "$attempts" -lt 30 ]; do
+        kubectl get csr "$csr_name" -o jsonpath='{.status.certificate}' 2>/dev/null | base64 -d >"$output_dir/autoscaler.crt" || true
+        [ -s "$output_dir/autoscaler.crt" ] && break
+        attempts=$((attempts + 1))
+        sleep 2
+      done
+      kubectl delete csr "$csr_name" --wait=false >/dev/null
+      [ -s "$output_dir/autoscaler.crt" ]
+    }
+
+    register_argocd_cluster() {
+      kubeconfig=$1 logical_name=$2 secret_name=$3 username=$4 registration=$5 rotation_request=$6 output_dir=$7 purpose=$8
+      server=$(kubectl config view --kubeconfig "$kubeconfig" --raw -o jsonpath='{.clusters[0].cluster.server}')
+      ca=$(kubectl config view --kubeconfig "$kubeconfig" --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
+      current_json="$output_dir/${secret_name}.json"
+      current_crt="$output_dir/${secret_name}.crt"
+      renew=true
+      if kubectl get secret "$secret_name" -n argocd -o jsonpath='{.data.config}' 2>/dev/null | base64 -d >"$current_json"; then
+        jq -r '.tlsClientConfig.certData // ""' "$current_json" | base64 -d >"$current_crt" || true
+        old_server=$(kubectl get secret "$secret_name" -n argocd -o jsonpath='{.data.server}' | base64 -d || true)
+        old_ca=$(jq -r '.tlsClientConfig.caData // ""' "$current_json")
+        old_rotation=$(kubectl get secret "$secret_name" -n argocd -o jsonpath='{.metadata.annotations.registration\.csoc\.js2\.org/rotation-request}' 2>/dev/null || true)
+        if [ "$old_server" = "$server" ] && [ "$old_ca" = "$ca" ] && [ "$old_rotation" = "$rotation_request" ] && openssl x509 -in "$current_crt" -checkend "$RENEW_SECONDS" -noout >/dev/null 2>&1; then
+          renew=false
+        fi
+      fi
+      cert_dir="$output_dir/${logical_name}"
+      mkdir -p "$cert_dir"
+      if [ "$renew" = true ]; then
+        issue_certificate "$kubeconfig" "unused" "$registration-${logical_name}" "$username" "$cert_dir"
+        cert=$(base64 <"$cert_dir/client.crt" | tr -d '\n')
+        key=$(base64 <"$cert_dir/client.key" | tr -d '\n')
+      else
+        cert=$(jq -r '.tlsClientConfig.certData' "$current_json")
+        key=$(jq -r '.tlsClientConfig.keyData' "$current_json")
+      fi
+      REGISTER_NOT_AFTER=$(printf '%s' "$cert" | base64 -d | openssl x509 -noout -enddate | cut -d= -f2-)
+      REGISTER_REVISION=$(printf '%s\n%s\n%s' "$server" "$ca" "$cert" | sha256sum | cut -d' ' -f1)
+      jq -n --arg ca "$ca" --arg cert "$cert" --arg key "$key" \
+        '{tlsClientConfig:{insecure:false,caData:$ca,certData:$cert,keyData:$key}}' >"$output_dir/argocd-config.json"
+      kubectl create secret generic "$secret_name" -n argocd \
+        --from-literal=name="$logical_name" --from-literal=server="$server" \
+        --from-file=config="$output_dir/argocd-config.json" --dry-run=client -o yaml \
+        | kubectl apply --server-side -f - >/dev/null
+      kubectl label secret "$secret_name" -n argocd --overwrite \
+        argocd.argoproj.io/secret-type=cluster csoc.js2.org/generation=v2 \
+        "csoc.js2.org/credential-purpose=${purpose}" \
+        "csoc.js2.org/registration=${registration}" \
+        "csoc.js2.org/registration-namespace=${REGISTRATION_NAMESPACE}" >/dev/null
+      kubectl annotate secret "$secret_name" -n argocd --overwrite \
+        "registration.csoc.js2.org/rotation-request=${rotation_request}" >/dev/null
+    }
+
+    ensure_autoscaler_access() {
+      kubeconfig=$1 namespace=$2 registration=$3 cluster=$4 rotation_request=$5 output_dir=$6
+      username="csoc-autoscaler:${namespace}:${registration}"
+      access_name="${registration}-cluster-autoscaler"
+      kubectl apply --server-side -f - >/dev/null <<EOF
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: ${access_name}
+      namespace: ${namespace}
+    subjects:
+      - kind: User
+        name: ${username}
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: csoc-cluster-autoscaler-management
+    EOF
+
+      management_secret="${registration}-autoscaler-kubeconfig"
+      management_kubeconfig="$output_dir/management.kubeconfig"
+      renew=true
+      if kubectl get secret "$management_secret" -n "$namespace" -o jsonpath='{.data.value}' 2>/dev/null | base64 -d >"$management_kubeconfig"; then
+        kubectl config view --kubeconfig "$management_kubeconfig" --raw -o jsonpath='{.users[0].user.client-certificate-data}' | base64 -d >"$output_dir/autoscaler-current.crt" || true
+        old_server=$(kubectl config view --kubeconfig "$management_kubeconfig" --raw -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null || true)
+        old_ca=$(kubectl config view --kubeconfig "$management_kubeconfig" --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' 2>/dev/null || true)
+        old_rotation=$(kubectl get secret "$management_secret" -n "$namespace" -o jsonpath='{.metadata.annotations.registration\.csoc\.js2\.org/rotation-request}' 2>/dev/null || true)
+        if [ "$old_server" = "$MANAGEMENT_SERVER" ] && [ "$old_ca" = "$MANAGEMENT_CA_DATA" ] && [ "$old_rotation" = "$rotation_request" ] && openssl x509 -in "$output_dir/autoscaler-current.crt" -checkend "$RENEW_SECONDS" -noout >/dev/null 2>&1; then
+          renew=false
+        fi
+      fi
+      if [ "$renew" = true ]; then
+        issue_management_certificate "$registration" "$username" "$output_dir"
+        rm -f -- "$management_kubeconfig"
+        printf '%s' "$MANAGEMENT_CA_DATA" | base64 -d >"$output_dir/management-ca.crt"
+        kubectl config --kubeconfig "$management_kubeconfig" set-cluster csoc-management \
+          --server="$MANAGEMENT_SERVER" --certificate-authority="$output_dir/management-ca.crt" --embed-certs=true >/dev/null
+        kubectl config --kubeconfig "$management_kubeconfig" set-credentials cluster-autoscaler \
+          --client-certificate="$output_dir/autoscaler.crt" --client-key="$output_dir/autoscaler.key" --embed-certs=true >/dev/null
+        kubectl config --kubeconfig "$management_kubeconfig" set-context csoc-management \
+          --cluster=csoc-management --user=cluster-autoscaler --namespace="$namespace" >/dev/null
+        kubectl config --kubeconfig "$management_kubeconfig" use-context csoc-management >/dev/null
+        kubectl create secret generic "$management_secret" -n "$namespace" --from-file=value="$management_kubeconfig" \
+          --dry-run=client -o yaml | kubectl apply --server-side -f - >/dev/null
+        kubectl annotate secret "$management_secret" -n "$namespace" --overwrite \
+          "registration.csoc.js2.org/rotation-request=${rotation_request}" >/dev/null
+      fi
+      chmod 0600 "$management_kubeconfig"
+      autoscaler_cert=$(kubectl config view --kubeconfig "$management_kubeconfig" --raw -o jsonpath='{.users[0].user.client-certificate-data}')
+      AUTOSCALER_NOT_AFTER=$(printf '%s' "$autoscaler_cert" | base64 -d | openssl x509 -noout -enddate | cut -d= -f2-)
+      AUTOSCALER_REVISION=$(sha256sum "$management_kubeconfig" | cut -d' ' -f1)
+      kubectl --kubeconfig "$kubeconfig" create secret generic csoc-cluster-api-management-kubeconfig -n kube-system \
+        --from-file=value="$management_kubeconfig" --dry-run=client -o yaml \
+        | kubectl --kubeconfig "$kubeconfig" apply --server-side -f - >/dev/null
+      kubectl --kubeconfig "$kubeconfig" label secret csoc-cluster-api-management-kubeconfig -n kube-system --overwrite \
+        csoc.js2.org/credential-purpose=cluster-api-autoscaler "csoc.js2.org/workload-cluster=${cluster}" >/dev/null
+    }
+
+    copy_cloud_config() {
+      kubeconfig=$1 namespace=$2 source_secret=$3 cluster=$4 output_dir=$5
+      wrapper="$output_dir/cloud-config-wrapper.yaml"
+      cloud_conf="$output_dir/cloud.conf"
+      kubectl get secret "$source_secret" -n "$namespace" -o jsonpath='{.data.cloud-config\.yaml}' \
+        | base64 -d >"$wrapper"
+      yq -er '.data."cloud.conf"' "$wrapper" | base64 -d >"$cloud_conf"
+      grep -q '^\[Global\]' "$cloud_conf"
+      WORKLOAD_REVISION=$(sha256sum "$cloud_conf" | cut -d' ' -f1)
+      kubectl --kubeconfig "$kubeconfig" create secret generic cloud-config -n kube-system \
+        --from-file="cloud.conf=$cloud_conf" --dry-run=client -o yaml \
+        | kubectl --kubeconfig "$kubeconfig" apply --server-side -f - >/dev/null
+      kubectl --kubeconfig "$kubeconfig" label secret cloud-config -n kube-system --overwrite \
+        csoc.js2.org/credential-purpose=openstack-workload \
+        "csoc.js2.org/workload-cluster=${cluster}" \
+        "csoc.js2.org/registration=${REGISTRATION_NAME}" >/dev/null
+    }
+
+    reconcile_one() (
+      namespace=$1 registration=$2
+      REGISTRATION_NAMESPACE=$namespace
+      REGISTRATION_NAME=$registration
+      export REGISTRATION_NAMESPACE REGISTRATION_NAME
+      item_dir=$(mktemp -d "${WORK_ROOT}/${namespace}-${registration}.XXXXXX")
+      trap 'rm -rf -- "$item_dir"' EXIT HUP INT TERM
+      cluster=$(kubectl get spokeregistration "$registration" -n "$namespace" -o jsonpath='{.spec.clusterRef.name}')
+      cloud_secret=$(kubectl get spokeregistration "$registration" -n "$namespace" -o jsonpath='{.spec.workloadCloudConfigSecretName}')
+      rotation_request=$(kubectl get spokeregistration "$registration" -n "$namespace" -o jsonpath='{.spec.rotationRequest}')
+      platform_cluster="${cluster}-platform"
+      monitoring_cluster="${cluster}-monitoring"
+      deletion=$(kubectl get spokeregistration "$registration" -n "$namespace" -o jsonpath='{.metadata.deletionTimestamp}' 2>/dev/null || true)
+
+      finalizers=$(kubectl get spokeregistration "$registration" -n "$namespace" -o jsonpath='{.metadata.finalizers}' 2>/dev/null || true)
+      case "$finalizers" in
+        *"${FINALIZER}"*) ;;
+        '[]'|'')
+          kubectl patch spokeregistration "$registration" -n "$namespace" --type=json \
+            -p "[{\"op\":\"add\",\"path\":\"/metadata/finalizers\",\"value\":[\"${FINALIZER}\"]}]" >/dev/null ;;
+        *)
+          kubectl patch spokeregistration "$registration" -n "$namespace" --type=json \
+            -p "[{\"op\":\"add\",\"path\":\"/metadata/finalizers/-\",\"value\":\"${FINALIZER}\"}]" >/dev/null ;;
+      esac
+
+      if [ -z "$deletion" ]; then
+        registration_count=$(kubectl get spokeregistrations --all-namespaces -o json \
+          | jq --arg namespace "$namespace" --arg cluster "$cluster" \
+              '[.items[] | select(.metadata.namespace == $namespace and .spec.clusterRef.name == $cluster)] | length')
+        if [ "$registration_count" -ne 1 ]; then
+          annotate "$namespace" "$registration" false "DuplicateRegistration"
+          return 0
+        fi
+      fi
+
+      secret_name="${cluster}-kubeconfig"
+      if ! kubectl get secret "$secret_name" -n "$namespace" -o jsonpath='{.data.value}' 2>/dev/null | base64 -d >"$item_dir/admin.kubeconfig" || [ ! -s "$item_dir/admin.kubeconfig" ]; then
+        if [ -n "$deletion" ]; then
+          annotate "$namespace" "$registration" false "DeregistrationSpokeUnreachable"
+        else
+          annotate "$namespace" "$registration" false "WaitingForControlPlaneKubeconfig"
+        fi
+        return 0
+      fi
+      chmod 0600 "$item_dir/admin.kubeconfig"
+
+      if [ -n "$deletion" ]; then
+        references=$(references_cluster "$namespace" "$cluster" || true)
+        approved=$(kubectl get spokeregistration "$registration" -n "$namespace" -o jsonpath='{.metadata.annotations.retirement\.csoc\.js2\.org/approved}' 2>/dev/null || true)
+        if [ -n "$references" ] || [ "$approved" != true ]; then
+          annotate "$namespace" "$registration" false "DeregistrationBlocked"
+          return 0
+        fi
+        if ! kubectl --kubeconfig "$item_dir/admin.kubeconfig" get --raw=/readyz >/dev/null 2>&1; then
+          annotate "$namespace" "$registration" false "DeregistrationSpokeUnreachable"
+          return 0
+        fi
+        kubectl --kubeconfig "$item_dir/admin.kubeconfig" delete rolebindings --all-namespaces \
+          -l "csoc.js2.org/registration=${registration}" --ignore-not-found=true >/dev/null
+        kubectl --kubeconfig "$item_dir/admin.kubeconfig" delete clusterrolebindings,clusterroles \
+          -l "csoc.js2.org/registration=${registration}" --ignore-not-found=true >/dev/null
+        kubectl --kubeconfig "$item_dir/admin.kubeconfig" delete secret cloud-config csoc-cluster-api-management-kubeconfig \
+          -n kube-system --ignore-not-found=true >/dev/null
+        kubectl delete secret "cluster-${cluster}" "cluster-${platform_cluster}" "cluster-${monitoring_cluster}" -n argocd --ignore-not-found=true >/dev/null
+        kubectl delete secret "${registration}-autoscaler-kubeconfig" -n "$namespace" --ignore-not-found=true >/dev/null
+        kubectl delete rolebinding "${registration}-cluster-autoscaler" -n "$namespace" --ignore-not-found=true >/dev/null
+        finalizer_index=$(kubectl get spokeregistration "$registration" -n "$namespace" -o json \
+          | jq --arg finalizer "$FINALIZER" '.metadata.finalizers | index($finalizer)')
+        [ "$finalizer_index" != null ] && kubectl patch spokeregistration "$registration" -n "$namespace" --type=json \
+          -p "[{\"op\":\"remove\",\"path\":\"/metadata/finalizers/${finalizer_index}\"}]" >/dev/null
+        return 0
+      fi
+
+      server=$(kubectl config view --kubeconfig "$item_dir/admin.kubeconfig" --raw -o jsonpath='{.clusters[0].cluster.server}')
+      if ! kubectl --kubeconfig "$item_dir/admin.kubeconfig" get --raw=/readyz >/dev/null 2>&1; then
+        annotate "$namespace" "$registration" false "WaitingForControlPlaneAPI"
+        return 0
+      fi
+      if ! kubectl get secret "$cloud_secret" -n "$namespace" >/dev/null 2>&1; then
+        annotate "$namespace" "$registration" false "WaitingForWorkloadCloudConfig"
+        return 0
+      fi
+      username="csoc-argocd:${namespace}:${registration}"
+      platform_username="csoc-argocd-platform:${namespace}:${registration}"
+      monitoring_username="csoc-argocd-monitoring:${namespace}:${registration}"
+      ensure_spoke_rbac "$item_dir/admin.kubeconfig" "$username" "$platform_username" "$monitoring_username" "$namespace" "$cluster" "$registration"
+      copy_cloud_config "$item_dir/admin.kubeconfig" "$namespace" "$cloud_secret" "$cluster" "$item_dir"
+      ensure_autoscaler_access "$item_dir/admin.kubeconfig" "$namespace" "$registration" "$cluster" "$rotation_request" "$item_dir"
+      register_argocd_cluster "$item_dir/admin.kubeconfig" "$cluster" "cluster-${cluster}" "$username" "$registration" "$rotation_request" "$item_dir" application
+      not_after=$REGISTER_NOT_AFTER
+      revision=$REGISTER_REVISION
+      register_argocd_cluster "$item_dir/admin.kubeconfig" "$platform_cluster" "cluster-${platform_cluster}" "$platform_username" "$registration" "$rotation_request" "$item_dir" platform
+      platform_not_after=$REGISTER_NOT_AFTER
+      platform_revision=$REGISTER_REVISION
+      register_argocd_cluster "$item_dir/admin.kubeconfig" "$monitoring_cluster" "cluster-${monitoring_cluster}" "$monitoring_username" "$registration" "$rotation_request" "$item_dir" monitoring
+      monitoring_not_after=$REGISTER_NOT_AFTER
+      monitoring_revision=$REGISTER_REVISION
+      kubectl annotate spokeregistration "$registration" -n "$namespace" --overwrite \
+        registration.csoc.js2.org/registered=true \
+        "registration.csoc.js2.org/endpoint=${server}" \
+        "registration.csoc.js2.org/platform-cluster-name=${platform_cluster}" \
+        "registration.csoc.js2.org/monitoring-cluster-name=${monitoring_cluster}" \
+        "registration.csoc.js2.org/certificate-not-after=${not_after}" \
+        "registration.csoc.js2.org/credential-revision=${revision}" \
+        "registration.csoc.js2.org/platform-certificate-not-after=${platform_not_after}" \
+        "registration.csoc.js2.org/platform-credential-revision=${platform_revision}" \
+        "registration.csoc.js2.org/monitoring-certificate-not-after=${monitoring_not_after}" \
+        "registration.csoc.js2.org/monitoring-credential-revision=${monitoring_revision}" \
+        "registration.csoc.js2.org/autoscaler-certificate-not-after=${AUTOSCALER_NOT_AFTER}" \
+        "registration.csoc.js2.org/autoscaler-credential-revision=${AUTOSCALER_REVISION}" \
+        "registration.csoc.js2.org/workload-credential-revision=${WORKLOAD_REVISION}" \
+        "registration.csoc.js2.org/rotation-request-applied=${rotation_request}" \
+        registration.csoc.js2.org/message=Registered >/dev/null
+    )
+
+    reconcile_all() {
+      kubectl get spokeregistrations --all-namespaces \
+        -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\n"}{end}' \
+        | while IFS="$(printf '\t')" read -r namespace registration; do
+            [ -n "$registration" ] || continue
+            reconcile_one "$namespace" "$registration" || annotate "$namespace" "$registration" false "UnreachableOrCredentialError"
+          done
+    }
+
+    if [ "${CSOC_REGISTRATION_RUN_ONCE:-false}" = true ]; then
+      reconcile_all
+      exit 0
+    fi
+    while true; do
+      reconcile_all
+      sleep "${CSOC_REGISTRATION_INTERVAL_SECONDS:-60}"
+    done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spoke-registration-controller
+  namespace: cluster-registration
+  annotations: {argocd.argoproj.io/sync-wave: "-17"}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app.kubernetes.io/name: spoke-registration-controller}}
+  template:
+    metadata: {labels: {app.kubernetes.io/name: spoke-registration-controller}}
+    spec:
+      serviceAccountName: spoke-registration-controller
+      securityContext: {runAsNonRoot: true, runAsUser: 1000, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: controller
+          image: alpine/k8s:1.34.9@sha256:72c921a10c53ab749674e828ad12b776d006481c852bba7dd89e149ceed666f3
+          command: [/opt/csoc/reconcile.sh]
+          env:
+            - name: MANAGEMENT_SERVER
+              valueFrom: {configMapKeyRef: {name: csoc-registration-environment, key: server}}
+            - name: MANAGEMENT_CA_DATA
+              valueFrom: {configMapKeyRef: {name: csoc-registration-environment, key: caData}}
+            - name: MANAGEMENT_CA_SHA256
+              valueFrom: {configMapKeyRef: {name: csoc-registration-environment, key: caSHA256}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 256Mi}
+          volumeMounts:
+            - {name: controller, mountPath: /opt/csoc, readOnly: true}
+            - {name: work, mountPath: /work}
+      volumes:
+        - name: controller
+          configMap: {name: spoke-registration-controller, defaultMode: 0555}
+        - name: work
+          emptyDir: {medium: Memory, sizeLimit: 32Mi}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: csoc-v2-contracts
+  annotations: {argocd.argoproj.io/sync-wave: "-18"}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [infra.csoc.js2.org, delivery.csoc.js2.org, services.csoc.js2.org]
+        apiVersions: [v1alpha1]
+        operations: [CREATE, UPDATE]
+        resources: ["*"]
+  validations:
+    - expression: 'request.kind.kind != "SpokeNodePool" || (object.spec.minNodes <= object.spec.maxNodes && (object.spec.class != "system" || object.spec.minNodes >= 1))'
+      message: SpokeNodePool requires minNodes <= maxNodes and system minNodes >= 1.
+    - expression: 'request.kind.kind != "SpokeNodePool" || request.operation != "UPDATE" || (object.spec.clusterRef == oldObject.spec.clusterRef && object.spec.profileRef == oldObject.spec.profileRef && object.spec.class == oldObject.spec.class && object.spec.failureDomain == oldObject.spec.failureDomain && object.spec.capacity == oldObject.spec.capacity)'
+      message: Only SpokeNodePool scaling bounds are mutable; replace the pool for profile or placement changes.
+    - expression: '!request.kind.kind.matches("^(MachineProfile|SpokeNetwork|WorkloadCluster|SpokeAccount)$") || request.operation != "UPDATE" || object.spec == oldObject.spec'
+      message: This infrastructure contract is immutable; create a new exact-name instance.
+    - expression: 'request.kind.kind != "SpokeNetwork" || (object.spec.mode == "managedRouted" ? (object.spec.networkID == "" && object.spec.subnetID == "" && object.spec.routerID == "") : (object.spec.networkID.matches("^[0-9a-f-]{36}$") && object.spec.subnetID.matches("^[0-9a-f-]{36}$") && object.spec.routerID.matches("^[0-9a-f-]{36}$")))'
+      message: Managed networks derive all topology IDs; imported routed networks require exact network, subnet, and router UUIDs.
+    - expression: 'request.kind.kind != "EndpointBinding" || (object.spec.placement != "restrictedPublicLoadBalancer" || object.spec.allowedCIDR.matches("^([0-9]{1,3}\\.){3}[0-9]{1,3}/32$"))'
+      message: Restricted public endpoints require exactly one IPv4 /32.
+    - expression: 'request.kind.kind != "EndpointBinding" || (object.spec.placement == "clusterIP" && object.spec.allowedCIDR == "" && object.spec.hostname == "" && object.spec.tlsMode == "none" && object.spec.tlsSecretName == "")'
+      message: Only ClusterIP/no-TLS endpoints are accepted until other endpoint modes pass live acceptance.
+    - expression: 'request.kind.kind != "CinderStorageBinding" || (object.spec.mode == "fixed" ? (object.spec.existingVolumeID.matches("^[0-9a-f-]{36}$") && object.spec.claimName != "" && object.spec.configCommit.matches("^[0-9a-f]{40}$")) : (object.spec.existingVolumeID == "" && object.spec.claimName == "" && object.spec.configCommit == ""))'
+      message: Fixed Cinder storage requires an exact volume, claim, and renderer commit; dynamicPolicy must not pre-create a claim or carry unused renderer inputs.
+    - expression: 'request.kind.kind != "HubAuthBinding" || (object.spec.mode == "dummy" && object.spec.environment == "dev" && object.spec.endpointPlacement == "clusterIP" && object.spec.secretBundleRef.name == "")'
+      message: Only secret-free development dummy authentication on ClusterIP is accepted in the initial support matrix.
+    - expression: 'request.kind.kind != "RegistryCacheInstance" || (object.spec.backendType == "cinder" ? (object.spec.cinderStorageRef.name != "" && object.spec.s3StorageRef.name == "") : (object.spec.s3StorageRef.name != "" && object.spec.cinderStorageRef.name == "" && object.spec.secretBundleRef.name != ""))'
+      message: RegistryCacheInstance requires exactly the storage binding matching backendType.
+    - expression: '!request.kind.kind.matches("^(GpuRuntimeAddon|CephFSAddon|S3CSIAddon|CephFSVolumeBinding|S3VolumeBinding|BinderBuildInstance|JupyterOutpostInstance)$")'
+      message: This optional contract is published for review but activation is blocked until its artifact, renderer, and live acceptance are complete.
+    - expression: 'request.kind.kind != "JupyterHubInstance" || (object.spec.gpuPoolRef.name == "" && object.spec.migPoolRef.name == "" && object.spec.cephFSHomesRef.name == "" && object.spec.s3DatasetsRef.name == "" && object.spec.binderBuildRef.name == "" && object.spec.outpostRef.name == "")'
+      message: Optional JupyterHub integrations remain blocked in the initial support matrix.
+    - expression: 'request.kind.kind != "MonitoringInstance" || (object.spec.secretBundleRef.name == "" && object.spec.endpointRef.name == "")'
+      message: Monitoring secret and endpoint inputs remain blocked until they are consumed by a validated renderer.
+    - expression: 'size(object.metadata.namespace) + size(object.metadata.name) <= 45'
+      message: Namespace and instance name are too long for deterministic Argo resource names.
+    - expression: 'request.kind.kind != "SpokeRegistration" || size(object.metadata.name) <= 31'
+      message: SpokeRegistration names must fit purpose-specific spoke RBAC names.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: csoc-v2-contracts
+  annotations: {argocd.argoproj.io/sync-wave: "-17"}
+spec:
+  policyName: csoc-v2-contracts
+  validationActions: [Deny, Audit]

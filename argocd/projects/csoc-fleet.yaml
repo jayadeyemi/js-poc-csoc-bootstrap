@@ -22,6 +22,29 @@ spec:
     - group: csoc.js2.org
       kind: SpokeIdentity
   namespaceResourceWhitelist:
+    - {group: infra.csoc.js2.org, kind: SpokeAccount}
+    - {group: infra.csoc.js2.org, kind: MachineProfile}
+    - {group: infra.csoc.js2.org, kind: SpokeNetwork}
+    - {group: infra.csoc.js2.org, kind: WorkloadCluster}
+    - {group: infra.csoc.js2.org, kind: SpokeNodePool}
+    - {group: infra.csoc.js2.org, kind: ClusterFoundation}
+    - {group: infra.csoc.js2.org, kind: SpokeRegistration}
+    - {group: delivery.csoc.js2.org, kind: ApplicationBoundary}
+    - {group: delivery.csoc.js2.org, kind: SecretBundle}
+    - {group: delivery.csoc.js2.org, kind: CinderStorageBinding}
+    - {group: delivery.csoc.js2.org, kind: CephFSAddon}
+    - {group: delivery.csoc.js2.org, kind: CephFSVolumeBinding}
+    - {group: delivery.csoc.js2.org, kind: S3CSIAddon}
+    - {group: delivery.csoc.js2.org, kind: S3VolumeBinding}
+    - {group: delivery.csoc.js2.org, kind: GpuRuntimeAddon}
+    - {group: delivery.csoc.js2.org, kind: EndpointBinding}
+    - {group: delivery.csoc.js2.org, kind: HubAuthBinding}
+    - {group: services.csoc.js2.org, kind: SmokeApplication}
+    - {group: services.csoc.js2.org, kind: JupyterHubInstance}
+    - {group: services.csoc.js2.org, kind: MonitoringInstance}
+    - {group: services.csoc.js2.org, kind: RegistryCacheInstance}
+    - {group: services.csoc.js2.org, kind: BinderBuildInstance}
+    - {group: services.csoc.js2.org, kind: JupyterOutpostInstance}
     - group: csoc.js2.org
       kind: SpokeCluster
     - group: csoc.js2.org

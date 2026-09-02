@@ -84,10 +84,19 @@ fi
 log::step 3 "Validating ${CSOC_PROFILE} Argo manifests from archived revisions"
 dry_run_args=(--dry-run=server --server-side --force-conflicts --field-manager=csoc-bootstrap)
 kubectl apply "${dry_run_args[@]}" -f "${BOOTSTRAP_SOURCE}/argocd/projects" >/dev/null
-kubectl apply "${dry_run_args[@]}" \
-  -f "${BOOTSTRAP_SOURCE}/${CSOC_APPLICATION_DIR_REL}" >/dev/null
-kubectl apply "${dry_run_args[@]}" \
-  -f "${BOOTSTRAP_SOURCE}/${CSOC_ARGO_ROOT_MANIFEST_REL}" >/dev/null
+for application in "${BOOTSTRAP_SOURCE}/${CSOC_APPLICATION_DIR_REL}"/*.yaml; do
+  case $(yq -r '.metadata.name' "${application}") in
+    csoc-controllers) revision=${CSOC_BOOTSTRAP_REVISION} ;;
+    rgds) revision=${CSOC_CATALOG_REVISION} ;;
+    csoc-fleet) revision=${CSOC_FLEET_REVISION} ;;
+    *) log::die "Unexpected profile Application: ${application}" ;;
+  esac
+  yq ".spec.source.targetRevision = \"${revision}\"" "${application}" \
+    | kubectl apply "${dry_run_args[@]}" -f - >/dev/null
+done
+yq ".spec.source.targetRevision = \"${CSOC_BOOTSTRAP_REVISION}\"" \
+  "${BOOTSTRAP_SOURCE}/${CSOC_ARGO_ROOT_MANIFEST_REL}" \
+  | kubectl apply "${dry_run_args[@]}" -f - >/dev/null
 
 if [[ "${smoke_installed}" == true ]]; then
   helm uninstall "${SMOKE_RELEASE}" --namespace "${SMOKE_NAMESPACE}" \

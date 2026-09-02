@@ -38,7 +38,7 @@ The plan labels each difference as `no-op`, `in-place`, `observe-only`, or
 in-place target:
 
 ```bash
-make csoc-resize PROFILE=staging CONFIRM=csoc-staging
+make csoc-resize PROFILE=staging CONFIRM=js-csoc-staging
 make clusters-verify PROFILE=staging
 ```
 
@@ -87,3 +87,9 @@ status, CAPI readiness, and MachineDeployment readiness and bounds.
 static gate discovers profiles and fleet YAML rather than relying on a
 hard-coded cluster list, so a newly added profile or spoke is validated
 automatically.
+
+During the `csoc-*` to `js-csoc-*` replacement, static validation recognizes
+only a retained legacy ownership record with the same profile and template and
+emits a migration warning. Live preflight still fails closed while that legacy
+state file exists; it cannot create the new exact-name cluster until the old
+Magnum UUID is absent and the exact-UUID retirement workflow clears ownership.

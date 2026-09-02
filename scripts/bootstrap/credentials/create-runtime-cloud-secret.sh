@@ -16,7 +16,7 @@ csoc::load_profile "${REPO_ROOT}"
 export KUBECONFIG="${KUBECONFIG:-${MAGNUM_KUBECONFIG_DIR}/config}"
 
 usage() {
-  printf 'Usage: %s [--all | IDENTITY]\n' "$0" >&2
+  printf 'Usage: %s [--all | ACCOUNT]\n' "$0" >&2
   exit 64
 }
 
@@ -28,21 +28,16 @@ fi
 ACCOUNTS_DIR="${RUNTIME_CREDENTIALS_DIR:-${DEFAULT_ACCOUNTS_DIR}}"
 OS_CLOUD="${OS_CLOUD:-openstack}"
 
-declare -a identities=()
+declare -a accounts=()
 case "${1:-test-poc}" in
   --all)
-    while IFS= read -r directory; do
-      identities+=("$(basename "${directory}")")
-    done < <(find "${ACCOUNTS_DIR}" -mindepth 1 -maxdepth 1 -type d -print | sort)
+    while IFS= read -r directory; do accounts+=("$(basename "${directory}")"); done \
+      < <(find "${ACCOUNTS_DIR}" -mindepth 1 -maxdepth 1 -type d -print | sort)
     ;;
   -*) usage ;;
-  *)
-    (( $# <= 1 )) || usage
-    identities+=("${1:-test-poc}")
-    ;;
+  *) (( $# <= 1 )) || usage; accounts+=("${1:-test-poc}") ;;
 esac
-(( ${#identities[@]} > 0 )) || log::die "No account credential directories found in ${ACCOUNTS_DIR}"
-
+(( ${#accounts[@]} > 0 )) || log::die "No account credential directories found in ${ACCOUNTS_DIR}"
 command -v yq >/dev/null 2>&1 || log::die "Required command not found: yq"
 
 TRUSTED_FLEET_ROOT=
@@ -52,9 +47,7 @@ else
   command -v git >/dev/null 2>&1 || log::die "Required command not found: git"
   [[ -d "${FLEET_ROOT}/.git" ]] || log::die "Fleet Git repository not found: ${FLEET_ROOT}"
   TRUSTED_FLEET_ROOT=$(mktemp -d)
-  cleanup_trusted_fleet() {
-    rm -rf -- "${TRUSTED_FLEET_ROOT}"
-  }
+  cleanup_trusted_fleet() { rm -rf -- "${TRUSTED_FLEET_ROOT}"; }
   trap cleanup_trusted_fleet EXIT
   git -C "${FLEET_ROOT}" fetch --quiet origin \
     "+refs/heads/${CSOC_FLEET_REVISION}:refs/remotes/origin/${CSOC_FLEET_REVISION}" \
@@ -64,45 +57,17 @@ else
 fi
 
 load_identity() {
-  local identity=$1 identity_file clouds_file project_id cloud_name namespace
-  local credential_json magnum_file magnum_credential_id
+  local account=$1 identity_file=$2 clouds_file=$3 project_id=$4 credential_json=$5
+  local identity cloud_name namespace magnum_file magnum_credential_id
   local auth_url credential_id credential_secret region interface
   local work_dir cloud_conf workload_manifest
 
+  identity=$(yq -er '.metadata.name' "${identity_file}")
   [[ "${identity}" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] \
-    || log::die "Invalid identity name: ${identity}"
-  identity_file=
-  while IFS= read -r candidate; do
-    if IDENTITY_NAME="${identity}" yq -e \
-        'select(.kind == "ImmutableSpokeConfig" and .metadata.name == strenv(IDENTITY_NAME))' \
-        "${candidate}" >/dev/null 2>&1; then
-      [[ -z "${identity_file}" ]] \
-        || log::die "Identity ${identity} is declared more than once in ${CSOC_FLEET_PATH}"
-      identity_file=${candidate}
-    fi
-  done < <(find "${TRUSTED_FLEET_ROOT}/${CSOC_FLEET_PATH}/accounts" \
-    -type f -name identity-config.yaml | sort)
-  clouds_file="${ACCOUNTS_DIR}/${identity}/clouds.yaml"
-  [[ -n "${identity_file}" && -f "${identity_file}" ]] \
-    || log::die "Trusted SpokeIdentity configuration not found for ${identity} in ${CSOC_FLEET_PATH}"
-  credentials::require_private_file "${clouds_file}" "${identity} runtime"
-
-  project_id=$(IDENTITY_NAME="${identity}" yq -er \
-    'select(.kind == "ImmutableSpokeConfig" and .metadata.name == strenv(IDENTITY_NAME)) | .spec.projectID' \
-    "${identity_file}") \
-    || log::die "Missing trusted ImmutableSpokeConfig instance in ${identity_file}"
-  [[ "${project_id}" =~ ^[0-9a-fA-F]{32}$ ]] \
-    || log::die "Invalid trusted OpenStack project ID in ${identity_file}"
+    || log::die "Invalid identity name in ${identity_file}: ${identity}"
   cloud_name=openstack
   [[ "${OS_CLOUD}" == openstack ]] \
     || log::die "The standardized OpenStack cloud key is 'openstack', not '${OS_CLOUD}'"
-
-  credential_json=$(credentials::metadata "${clouds_file}" "${cloud_name}")
-  credentials::require_unexpired "${credential_json}" "${identity} runtime"
-  [[ $(jq -r '.project_id' <<<"${credential_json}") == "${project_id}" \
-     && $(jq -r '.app_project_id' <<<"${credential_json}") == "${project_id}" \
-     && $(jq -r '.unrestricted' <<<"${credential_json}") == false ]] \
-    || log::die "Runtime credential for ${identity} must be restricted and scoped only to ${project_id}"
 
   credential_id=$(jq -r '.id' <<<"${credential_json}")
   magnum_file=$(credentials::magnum_file)
@@ -117,17 +82,12 @@ load_identity() {
   log::step 1 "Ensuring account namespace '${namespace}'"
   k8s::ensure_namespace "${namespace}"
   kubectl label namespace "${namespace}" --overwrite \
-    csoc.js2.org/managed=true \
-    csoc.js2.org/openstack-credentials=allowed \
-    "csoc.js2.org/identity=${identity}" \
+    csoc.js2.org/managed=true csoc.js2.org/openstack-credentials=allowed \
+    "csoc.js2.org/identity=${identity}" "csoc.js2.org/account=${account}" \
     "csoc.js2.org/openstack-project-id=${project_id}" >/dev/null
 
   log::step 2 "Creating/updating CAPO and ORC secret for '${identity}'"
-  k8s::ensure_secret_from_file \
-    "${identity}-cloud-config" \
-    "${namespace}" \
-    clouds.yaml \
-    "${clouds_file}"
+  k8s::ensure_secret_from_file "${identity}-cloud-config" "${namespace}" clouds.yaml "${clouds_file}"
 
   auth_url=$(CLOUD_NAME="${cloud_name}" yq -er '.clouds[strenv(CLOUD_NAME)].auth.auth_url' "${clouds_file}")
   credential_secret=$(CLOUD_NAME="${cloud_name}" yq -er '.clouds[strenv(CLOUD_NAME)].auth.application_credential_secret' "${clouds_file}")
@@ -143,30 +103,64 @@ load_identity() {
   chmod 700 "${work_dir}"
   cloud_conf="${work_dir}/cloud.conf"
   workload_manifest="${work_dir}/cloud-config.yaml"
-  printf '%s\n' \
-    '[Global]' \
-    "auth-url=${auth_url}" \
+  printf '%s\n' '[Global]' "auth-url=${auth_url}" \
     "application-credential-id=${credential_id}" \
     "application-credential-secret=${credential_secret}" \
-    "region=${region}" \
-    "os-endpoint-type=${interface}" \
-    'tls-insecure=false' >"${cloud_conf}"
+    "region=${region}" "os-endpoint-type=${interface}" 'tls-insecure=false' >"${cloud_conf}"
   chmod 600 "${cloud_conf}"
-  kubectl create secret generic cloud-config \
-    --namespace kube-system \
-    --from-file="cloud.conf=${cloud_conf}" \
-    --dry-run=client -o yaml >"${workload_manifest}"
+  kubectl create secret generic cloud-config --namespace kube-system \
+    --from-file="cloud.conf=${cloud_conf}" --dry-run=client -o yaml >"${workload_manifest}"
   chmod 600 "${workload_manifest}"
   kubectl create secret generic "${identity}-workload-cloud-config" \
-    --namespace "${namespace}" \
-    --type addons.cluster.x-k8s.io/resource-set \
-    --from-file="cloud-config.yaml=${workload_manifest}" \
-    --dry-run=client -o yaml \
+    --namespace "${namespace}" --type addons.cluster.x-k8s.io/resource-set \
+    --from-file="cloud-config.yaml=${workload_manifest}" --dry-run=client -o yaml \
     | kubectl apply --server-side -f - >/dev/null
   rm -rf -- "${work_dir}"
   log::success "Runtime secrets for '${identity}' are up-to-date."
 }
 
-for identity in "${identities[@]}"; do
-  load_identity "${identity}"
-done
+load_account() {
+  local account=$1 clouds_file project_id= credential_json candidate candidate_project
+  local -a identity_files=()
+  [[ "${account}" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] \
+    || log::die "Invalid account name: ${account}"
+  clouds_file="${ACCOUNTS_DIR}/${account}/clouds.yaml"
+  credentials::require_private_file "${clouds_file}" "${account}" runtime
+
+  while IFS= read -r candidate; do
+    if ACCOUNT_NAME="${account}" yq -e '
+        select(
+          (.kind == "ImmutableSpokeConfig" and .metadata.labels."csoc.js2.org/account" == strenv(ACCOUNT_NAME)) or
+          (.kind == "SpokeAccount" and .apiVersion == "infra.csoc.js2.org/v1alpha1" and .metadata.name == strenv(ACCOUNT_NAME))
+        )' "${candidate}" >/dev/null 2>&1; then
+      identity_files+=("${candidate}")
+    fi
+  done < <(find "${TRUSTED_FLEET_ROOT}/${CSOC_FLEET_PATH}/accounts" -type f \
+    \( -name identity-config.yaml -o -name spoke-account.yaml \) | sort)
+  (( ${#identity_files[@]} > 0 )) \
+    || log::die "Trusted legacy identity or v2 SpokeAccount not found for account ${account} in ${CSOC_FLEET_PATH}"
+
+  for candidate in "${identity_files[@]}"; do
+    candidate_project=$(yq -er '.spec.projectID' "${candidate}") \
+      || log::die "Missing trusted project ID in ${candidate}"
+    [[ "${candidate_project}" =~ ^[0-9a-fA-F]{32}$ ]] \
+      || log::die "Invalid trusted OpenStack project ID in ${candidate}"
+    if [[ -z "${project_id}" ]]; then project_id=${candidate_project}; else
+      [[ "${candidate_project}" == "${project_id}" ]] \
+        || log::die "Account ${account} spans multiple OpenStack projects"
+    fi
+  done
+
+  credential_json=$(credentials::metadata "${clouds_file}" openstack)
+  credentials::require_unexpired "${credential_json}" "${account}" runtime
+  [[ $(jq -r '.project_id' <<<"${credential_json}") == "${project_id}" \
+     && $(jq -r '.app_project_id' <<<"${credential_json}") == "${project_id}" \
+     && $(jq -r '.unrestricted' <<<"${credential_json}") == false ]] \
+    || log::die "Runtime credential for ${account} must be restricted and scoped only to ${project_id}"
+
+  for candidate in "${identity_files[@]}"; do
+    load_identity "${account}" "${candidate}" "${clouds_file}" "${project_id}" "${credential_json}"
+  done
+}
+
+for account in "${accounts[@]}"; do load_account "${account}"; done

@@ -5,8 +5,8 @@ set -euo pipefail
 args="$*"
 project="${FAKE_PROJECT_ID:-53f449a040d14cef8512b69e4ad521cd}"
 cluster_id="${FAKE_CLUSTER_ID:-11111111-2222-3333-4444-555555555555}"
-cluster_name="${MAGNUM_CLUSTER_NAME:-csoc-dev}"
-master_flavor="${FAKE_MASTER_FLAVOR:-m3.small}"
+cluster_name="${FAKE_CLUSTER_NAME:-${MAGNUM_CLUSTER_NAME:-js-csoc-dev}}"
+master_flavor="${FAKE_MASTER_FLAVOR:-${MAGNUM_MASTER_FLAVOR:-m3.quad}}"
 worker_flavor="${FAKE_WORKER_FLAVOR:-m3.quad}"
 boot_volume_size="${FAKE_BOOT_VOLUME_SIZE:-20}"
 min_nodes="${MAGNUM_MIN_NODE_COUNT:-1}"
@@ -32,7 +32,7 @@ case "${args}" in
       expires_at="${FAKE_RUNTIME_EXPIRES_AT:-2099-01-01T00:00:00Z}"
     else
       unrestricted="${FAKE_MAGNUM_UNRESTRICTED:-true}"
-      expires_at="${FAKE_MAGNUM_EXPIRES_AT:-2099-01-01T00:00:00Z}"
+      expires_at="${FAKE_MAGNUM_EXPIRES_AT-2099-01-01T00:00:00Z}"
     fi
     printf '{"project_id":"%s","unrestricted":%s,"expires_at":"%s"}\n' \
       "${project}" "${unrestricted}" "${expires_at}"
@@ -145,8 +145,22 @@ case "${args}" in
   "server list -f json")
     printf '[{"ID":"server-1","Name":"js2-stack-control-plane","Status":"ACTIVE"},{"ID":"server-2","Name":"js2-stack-worker","Status":"ACTIVE"}]\n'
     ;;
-  "server show server-1 -f json") printf '{"volumes_attached":[{"id":"volume-1"}]}\n' ;;
+  "server show server-1 -f json")
+    if [[ "${FAKE_SERVER_EXTRA_VOLUME:-false}" == true ]]; then
+      printf '{"volumes_attached":[{"id":"volume-1"},{"id":"unexpected-volume"}]}\n'
+    else
+      printf '{"volumes_attached":[{"id":"volume-1"}]}\n'
+    fi
+    ;;
   "server show server-2 -f json") printf '{"volumes_attached":[{"id":"volume-2"}]}\n' ;;
-  volume\ show*) printf '{"size":%s}\n' "${boot_volume_size}" ;;
+  volume\ show*)
+    volume_id=$3
+    expected_server=server-1
+    [[ "${volume_id}" == volume-2 ]] && expected_server=server-2
+    printf '{"id":"%s","size":%s,"status":"%s","bootable":"%s","multiattach":%s,"attachments":[{"server_id":"%s"}],"os-vol-tenant-attr:tenant_id":"%s"}\n' \
+      "${volume_id}" "${boot_volume_size}" "${FAKE_VOLUME_STATUS:-in-use}" \
+      "${FAKE_VOLUME_BOOTABLE:-true}" "${FAKE_VOLUME_MULTIATTACH:-false}" \
+      "${FAKE_VOLUME_ATTACHMENT_SERVER:-${expected_server}}" "${FAKE_VOLUME_PROJECT_ID:-${project}}"
+    ;;
   *) printf 'Unhandled fake openstack command: %s\n' "${args}" >&2; exit 64 ;;
 esac

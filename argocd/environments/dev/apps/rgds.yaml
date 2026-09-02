@@ -10,6 +10,8 @@ spec:
   source:
     repoURL: https://github.com/jayadeyemi/js-poc-csoc-app-catalog
     targetRevision: environment/dev
+    # Dev compiles both v1 samples and v2 hub APIs so dual-run compatibility
+    # is continuously exercised without creating fleet instances.
     path: rgds
   destination:
     server: https://kubernetes.default.svc

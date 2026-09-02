@@ -47,7 +47,7 @@ PROJECT_DIR="${BOOTSTRAP_SOURCE}/argocd/projects"
 CONTROLLER_DIR="${BOOTSTRAP_SOURCE}/controllers"
 APPLICATION_DIR="${BOOTSTRAP_SOURCE}/${CSOC_APPLICATION_DIR_REL}"
 RGD_DIR="${CATALOG_SOURCE}/rgds"
-RGD_PACKAGE_DIR="${RGD_DIR}/test-poc"
+RGD_PACKAGE_DIR="${RGD_DIR}/v1-samples"
 FLEET_ENV_DIR="${FLEET_SOURCE}/${CSOC_FLEET_PATH}"
 ACCOUNTS_DIR="${FLEET_ENV_DIR}/accounts"
 GATE_CONFIGMAP=argocd-manual-manifest-gate
@@ -56,6 +56,30 @@ ARGO_FIELD_MANAGER=csoc-bootstrap
 apply_manifest() {
   kubectl apply --server-side --force-conflicts \
     --field-manager="${ARGO_FIELD_MANAGER}" -f "$1"
+}
+
+publish_registration_environment() {
+  local server ca_data ca_file ca_sha256
+  server=$(kubectl config view --minify --raw -o jsonpath='{.clusters[0].cluster.server}')
+  [[ "${server}" == https://* && "${server}" != https://kubernetes.default.svc* ]] \
+    || log::die "Registration requires the externally reachable management API endpoint"
+  ca_data=$(kubectl config view --minify --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
+  if [[ -z "${ca_data}" ]]; then
+    ca_file=$(kubectl config view --minify --raw -o jsonpath='{.clusters[0].cluster.certificate-authority}')
+    [[ -n "${ca_file}" && -f "${ca_file}" ]] || log::die "Management kubeconfig has no CA data"
+    ca_data=$(base64 -w0 <"${ca_file}")
+  fi
+  ca_sha256=$(printf '%s' "${ca_data}" | base64 -d | sha256sum | cut -d' ' -f1)
+  kubectl create namespace cluster-registration --dry-run=client -o yaml \
+    | kubectl apply --server-side -f - >/dev/null
+  kubectl create configmap csoc-registration-environment -n cluster-registration \
+    --from-literal="profile=${CSOC_PROFILE}" \
+    --from-literal="server=${server}" \
+    --from-literal="caData=${ca_data}" \
+    --from-literal="caSHA256=${ca_sha256}" \
+    --dry-run=client -o yaml \
+    | yq '.immutable = true' \
+    | kubectl apply --server-side -f - >/dev/null
 }
 
 wait_application() {
@@ -94,16 +118,18 @@ wait_instance_ready() {
 }
 
 apply_profile_application() {
-  local application=$1 manifest
+  local application=$1 manifest revision staged
   case "${application}" in
-    csoc-controllers) manifest="${APPLICATION_DIR}/controllers.yaml" ;;
-    csoc-fleet) manifest="${APPLICATION_DIR}/fleet.yaml" ;;
-    rgds) manifest="${APPLICATION_DIR}/rgds.yaml" ;;
+    csoc-controllers) manifest="${APPLICATION_DIR}/controllers.yaml"; revision=${CSOC_BOOTSTRAP_REVISION} ;;
+    csoc-fleet) manifest="${APPLICATION_DIR}/fleet.yaml"; revision=${CSOC_FLEET_REVISION} ;;
+    rgds) manifest="${APPLICATION_DIR}/rgds.yaml"; revision=${CSOC_CATALOG_REVISION} ;;
     *) log::die "Unknown profile Application: ${application}" ;;
   esac
   [[ -f "${manifest}" && $(yq -r '.kind' "${manifest}") == Application ]] \
     || log::die "Profile ${CSOC_PROFILE} does not declare Application/${application}"
-  apply_manifest "${manifest}"
+  staged="${SOURCE_ROOT}/${application}-candidate.yaml"
+  yq ".spec.source.targetRevision = \"${revision}\"" "${manifest}" >"${staged}"
+  apply_manifest "${staged}"
 }
 
 log::step 1 "Verifying manual manifest gate and repository layout"
@@ -132,6 +158,7 @@ fi
 
 log::step 2 "Applying the rgds, csoc-fleet, and csoc-baseline AppProjects"
 apply_manifest "${PROJECT_DIR}"
+publish_registration_environment
 
 log::step 3 "Applying controller Applications in dependency order"
 apply_manifest "${CONTROLLER_DIR}/cert-manager.yaml"
@@ -152,11 +179,29 @@ for crd in clusters.cluster.x-k8s.io clusterresourcesets.addons.cluster.x-k8s.io
   helmchartproxies.addons.cluster.x-k8s.io; do
   wait_crd "${crd}"
 done
+if [[ "${CSOC_API_GENERATION}" == v2 ]]; then
+  apply_manifest "${CONTROLLER_DIR}/kro-v2-rbac.yaml"
+fi
 apply_manifest "${CONTROLLER_DIR}/kro.yaml"
 wait_application kro
 wait_crd resourcegraphdefinitions.kro.run
+if [[ "${CSOC_API_GENERATION}" == v2 ]]; then
+  apply_manifest "${CONTROLLER_DIR}/registration.yaml"
+  kubectl -n cluster-registration rollout status \
+    deployment/spoke-registration-controller --timeout=300s
+fi
 
 log::step 4 "Manually applying RGD definitions in dependency order"
+if [[ "${CSOC_API_GENERATION}" == v2 ]]; then
+  current_context=$(kubectl config current-context)
+  require_empty=false
+  [[ "${CSOC_FLEET_ENABLED}" == true ]] || require_empty=true
+  APP_CATALOG_ROOT="${CATALOG_SOURCE}" \
+    CSOC_V2_ACTIVATION_APPROVED=true \
+    CSOC_REQUIRE_EMPTY_V2_FLEET="${require_empty}" \
+    CSOC_EXPECTED_CONTEXT="${current_context}" \
+    bash "${BOOTSTRAP_SOURCE}/scripts/tools/activate-v2-rgds.sh"
+else
 apply_manifest "${RGD_PACKAGE_DIR}/configmaps/immutable-spoke-config.rgd.yaml"
 wait_rgd immutablespokeconfig
 wait_crd immutablespokeconfigs.csoc.js2.org
@@ -205,9 +250,46 @@ wait_crd helloapps.apps.csoc.js2.org
 apply_manifest "${RGD_PACKAGE_DIR}/cluster/v1/spoke-cluster.rgd.yaml"
 wait_rgd spokecluster
 wait_crd spokeclusters.csoc.js2.org
+fi
 
 log::step 5 "Manually applying profile-selected fleet instances in graph order"
 if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
+if [[ "${CSOC_API_GENERATION}" == v2 ]]; then
+  v2_instances="${SOURCE_ROOT}/v2-instances.yaml"
+  kubectl kustomize "${FLEET_ENV_DIR}" >"${v2_instances}"
+  CSOC_V2_LIVE_PREFLIGHT_APPROVED=true \
+    bash "${BOOTSTRAP_SOURCE}/scripts/tools/preflight-v2-spoke.sh" \
+      "${v2_instances}" "${FLEET_SOURCE}/scripts/validate-v2-capacity.sh"
+  apply_manifest "${v2_instances}"
+
+  wait_rendered_kind_ready() {
+    local kind=$1 timeout=${2:-3600s} name namespace
+    while IFS=$'\t' read -r namespace name; do
+      [[ -n "${name}" ]] || continue
+      wait_instance_ready "${kind,,}" "${name}" "${namespace}" "${timeout}"
+    done < <(yq eval-all -r \
+      "select(.kind == \"${kind}\") | [.metadata.namespace,.metadata.name] | @tsv" \
+      "${v2_instances}" | rg -v '^---$')
+  }
+
+  wait_rendered_kind_ready SpokeAccount
+  wait_rendered_kind_ready MachineProfile
+  wait_rendered_kind_ready SpokeNetwork
+  wait_rendered_kind_ready WorkloadCluster 7200s
+  wait_rendered_kind_ready SpokeNodePool 7200s
+  while IFS=$'\t' read -r namespace name; do
+    [[ -n "${name}" ]] || continue
+    kubectl wait "spokeregistration/${name}" -n "${namespace}" \
+      --for=jsonpath='{.status.registered}'=true --timeout=1800s \
+      || log::die "spokeregistration/${name} did not register"
+  done < <(yq eval-all -r \
+    'select(.kind == "SpokeRegistration") | [.metadata.namespace,.metadata.name] | @tsv' \
+    "${v2_instances}" | rg -v '^---$')
+  for kind in ClusterFoundation ApplicationBoundary EndpointBinding HubAuthBinding \
+    CinderStorageBinding SmokeApplication JupyterHubInstance MonitoringInstance; do
+    wait_rendered_kind_ready "${kind}" 3600s
+  done
+else
   mapfile -t instance_dirs < <(
     find "${ACCOUNTS_DIR}" -type f -name cluster.yaml -printf '%h\n' | sort
   )
@@ -241,6 +323,7 @@ if [[ "${CSOC_FLEET_ENABLED}" == true ]]; then
     wait_instance_ready helloapp "${spoke_name}" "${namespace}" "1800s"
   fi
   done
+fi
 else
   log::info "${CSOC_PROFILE} deploys controllers and RGDs only; fleet instances are disabled"
 fi
@@ -259,9 +342,25 @@ fi
 # host-bootstrapped and intentionally renders only projects and child
 # Applications. Remove that stale marker before waiting so prune=false does not
 # leave the root permanently OutOfSync as an extraneous self-owned resource.
-kubectl annotate application csoc-app-of-apps -n argocd \
-  argocd.argoproj.io/tracking-id- >/dev/null
-apply_manifest "${APP_OF_APPS}"
+if kubectl get application csoc-app-of-apps -n argocd >/dev/null 2>&1; then
+  kubectl annotate application csoc-app-of-apps -n argocd \
+    argocd.argoproj.io/tracking-id- >/dev/null
+fi
+STAGED_APP_OF_APPS="${SOURCE_ROOT}/app-of-apps-candidate.yaml"
+yq ".spec.source.targetRevision = \"${CSOC_BOOTSTRAP_REVISION}\"" \
+  "${APP_OF_APPS}" >"${STAGED_APP_OF_APPS}"
+expected_environment_revision="environment/${CSOC_PROFILE}"
+if [[ "${CSOC_BOOTSTRAP_REVISION}" != "${expected_environment_revision}" \
+   || "${CSOC_CATALOG_REVISION}" != "${expected_environment_revision}" \
+   || "${CSOC_FLEET_REVISION}" != "${expected_environment_revision}" ]]; then
+  # Candidate testing keeps the root Application on the candidate bootstrap
+  # commit but leaves its three child Applications on their separately pinned
+  # candidate branches. Environment promotion restores normal App-of-Apps
+  # ownership without requiring a self-referential commit SHA.
+  yq -i '.spec.source.directory.include = "{argocd/projects/*.yaml}"' \
+    "${STAGED_APP_OF_APPS}"
+fi
+apply_manifest "${STAGED_APP_OF_APPS}"
 wait_application csoc-app-of-apps
 
 log::success "Manual-first ${CSOC_PROFILE} handoff completed at bootstrap=${CSOC_BOOTSTRAP_REVISION}, catalog=${CSOC_CATALOG_REVISION}, fleet=${CSOC_FLEET_REVISION}."

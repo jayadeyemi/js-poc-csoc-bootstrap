@@ -10,9 +10,35 @@ spec:
   source:
     repoURL: https://github.com/k-orc/openstack-resource-controller
     targetRevision: v2.6.0
-    path: dist
-    directory:
-      include: install.yaml
+    path: config/default
+    kustomize:
+      # ORC v2.6.0 has no reconcile-concurrency flag. Keep its supported cache
+      # and resource defaults visible so a later upgrade/tuning is reviewable.
+      patches:
+        - target:
+            group: apps
+            version: v1
+            kind: Deployment
+            name: orc-controller-manager
+          patch: |-
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: orc-controller-manager
+            spec:
+              replicas: 1
+              template:
+                spec:
+                  containers:
+                    - name: manager
+                      args:
+                        - --metrics-bind-address=:8443
+                        - --leader-elect
+                        - --health-probe-bind-address=:8081
+                        - --scope-cache-max-size=10
+                      resources:
+                        limits: {cpu: 500m, memory: 256Mi}
+                        requests: {cpu: 10m, memory: 64Mi}
   destination:
     server: https://kubernetes.default.svc
     namespace: orc-system

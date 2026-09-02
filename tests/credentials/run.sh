@@ -8,8 +8,10 @@ TEST_ROOT=$(mktemp -d)
 trap 'rm -rf -- "${TEST_ROOT}"' EXIT
 mkdir -p "${TEST_ROOT}/bin" "${TEST_ROOT}/accounts/account-a" \
   "${TEST_ROOT}/accounts/account-b" \
+  "${TEST_ROOT}/accounts/account-v2" \
   "${TEST_ROOT}/fleet/environments/staging/accounts/account-a/hello/dev" \
   "${TEST_ROOT}/fleet/environments/staging/accounts/account-b/hello/dev" \
+  "${TEST_ROOT}/fleet/environments/staging/accounts/account-v2/shared/dev" \
   "${TEST_ROOT}/kube-state"
 ln -s "${SCRIPT_DIR}/fake-openstack.sh" "${TEST_ROOT}/bin/openstack"
 ln -s "${SCRIPT_DIR}/fake-kubectl.sh" "${TEST_ROOT}/bin/kubectl"
@@ -21,6 +23,7 @@ write_identity() {
     'kind: ImmutableSpokeConfig' \
     'metadata:' \
     "  name: ${identity}" \
+    "  labels: {csoc.js2.org/account: ${identity}}" \
     'spec:' \
     "  projectID: ${project}" \
     >"${TEST_ROOT}/fleet/environments/staging/accounts/${identity}/hello/dev/identity-config.yaml"
@@ -57,8 +60,16 @@ write_magnum_cloud() {
 
 write_identity account-a aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 write_identity account-b bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+printf '%s\n' \
+  'apiVersion: infra.csoc.js2.org/v1alpha1' \
+  'kind: SpokeAccount' \
+  'metadata: {name: account-v2, namespace: spokeclusters-account-v2}' \
+  'spec:' \
+  '  projectID: cccccccccccccccccccccccccccccccc' \
+  >"${TEST_ROOT}/fleet/environments/staging/accounts/account-v2/shared/dev/spoke-account.yaml"
 write_cloud account-a
 write_cloud account-b
+write_cloud account-v2
 write_magnum_cloud magnum-id
 
 export PATH="${TEST_ROOT}/bin:${PATH}"
@@ -68,6 +79,11 @@ export MAGNUM_CLOUDS_YAML="${TEST_ROOT}/magnum-clouds.yaml"
 export FAKE_KUBECTL_LOG="${TEST_ROOT}/kubectl.log"
 export FAKE_KUBECTL_STATE="${TEST_ROOT}/kube-state"
 export CSOC_TEST_LOCAL_FLEET_SOURCE=true
+unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR
+unset MAGNUM_MASTER_COUNT MAGNUM_MASTER_FLAVOR MAGNUM_NODE_COUNT MAGNUM_WORKER_FLAVOR
+unset MAGNUM_MIN_NODE_COUNT MAGNUM_MAX_NODE_COUNT MAGNUM_EXPECTED_INITIAL_NODES
+unset MAGNUM_BOOT_VOLUME_SIZE MAGNUM_AUTO_SCALING_ENABLED
+unset CSOC_BOOTSTRAP_REVISION CSOC_CATALOG_REVISION CSOC_FLEET_REVISION
 export CSOC_PROFILE=staging
 
 run_loader() {
@@ -78,7 +94,7 @@ run_loader() {
 run_loader
 run_loader
 
-for identity in account-a account-b; do
+for identity in account-a account-b account-v2; do
   namespace="spokeclusters-${identity}"
   grep -F -- "${identity}-cloud-config --from-file=clouds.yaml=${TEST_ROOT}/accounts/${identity}/clouds.yaml --namespace ${namespace}" \
     "${FAKE_KUBECTL_LOG}" >/dev/null
@@ -106,6 +122,6 @@ if bash "${REPO_ROOT}/scripts/bootstrap/credentials/create-runtime-cloud-secret.
   exit 1
 fi
 
-printf 'ok - two identities load isolated restricted credentials idempotently\n'
+printf 'ok - legacy and v2 identities load isolated restricted credentials idempotently\n'
 printf 'ok - credential output is redacted and project mismatch is rejected\n'
 printf 'ok - spoke and Magnum application credential IDs must differ\n'

@@ -16,5 +16,7 @@ spec:
     - server: https://kubernetes.default.svc
       namespace: kro-system
   namespaceResourceWhitelist:
+    - group: services.csoc.js2.org
+      kind: SmokeApplication
     - group: apps.csoc.js2.org
       kind: HelloApp

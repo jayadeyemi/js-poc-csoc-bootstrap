@@ -40,6 +40,8 @@ spec:
       namespace: orc-system
     - server: https://kubernetes.default.svc
       namespace: "spokeclusters-*"
+    - server: https://kubernetes.default.svc
+      namespace: cluster-registration
   clusterResourceWhitelist:
     - group: apiextensions.k8s.io
       kind: CustomResourceDefinition
@@ -53,6 +55,10 @@ spec:
       kind: MutatingWebhookConfiguration
     - group: admissionregistration.k8s.io
       kind: ValidatingWebhookConfiguration
+    - group: admissionregistration.k8s.io
+      kind: ValidatingAdmissionPolicy
+    - group: admissionregistration.k8s.io
+      kind: ValidatingAdmissionPolicyBinding
     - group: ""
       kind: Namespace
   namespaceResourceWhitelist:

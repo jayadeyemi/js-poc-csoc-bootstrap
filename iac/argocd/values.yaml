@@ -12,16 +12,58 @@ server:
 
 repoServer:
   replicas: 1
+  # Upstream default: no request/limit. Exposed for benchmark tuning.
+  resources: {}
+  extraContainers:
+    - name: csoc-sops-helm
+      image: ghcr.io/jayadeyemi/csoc-sops-helm-cmp:0.1.0
+      imagePullPolicy: IfNotPresent
+      command: [/var/run/argocd/argocd-cmp-server]
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: {drop: [ALL]}
+      resources:
+        requests: {cpu: 50m, memory: 128Mi}
+        limits: {cpu: 500m, memory: 512Mi}
+      volumeMounts:
+        - {name: var-files, mountPath: /var/run/argocd}
+        - {name: plugins, mountPath: /home/argocd/cmp-server/plugins}
+        - {name: csoc-cmp-plugin, mountPath: /home/argocd/cmp-server/config/plugin.yaml, subPath: plugin.yaml, readOnly: true}
+        - {name: csoc-cmp-tmp, mountPath: /tmp}
+        - {name: csoc-age, mountPath: /home/argocd/.config/sops/age, readOnly: true}
+  volumes:
+    - name: csoc-cmp-plugin
+      configMap: {name: csoc-sops-helm-plugin}
+    - name: csoc-cmp-tmp
+      emptyDir: {medium: Memory, sizeLimit: 256Mi}
+    - name: csoc-age
+      secret: {secretName: argocd-cmp-age-dev}
 
 applicationSet:
   replicas: 0
 
 controller:
   replicas: 1
+  # Upstream default: no request/limit. Increase with processor counts.
+  resources: {}
 
 configs:
   params:
     server.insecure: "false"
+    # Application reconciliation workers.
+    controller.status.processors: "20"
+    controller.operation.processors: "10"
+    # Concurrent kubectl fork/exec operations during sync.
+    controller.kubectl.parallelism.limit: "20"
+    # Management-cluster Kubernetes API client throttle.
+    controller.k8s.client.qps: "50"
+    controller.k8s.client.burst: "100"
+    # Concurrent manifest generation; the pinned upstream default is one.
+    reposerver.parallelism.limit: "1"
   cm:
     # Track resources via annotation so Argo doesn't fight with other controllers
     application.resourceTrackingMethod: annotation
@@ -76,3 +118,45 @@ configs:
       hs.status = "Progressing"
       hs.message = obj.status and obj.status.phase or "Pending"
       return hs
+    resource.customizations.health.infra.csoc.js2.org_WorkloadCluster: |
+      hs = {}
+      hs.status = obj.status and obj.status.ready == true and "Healthy" or "Progressing"
+      hs.message = obj.status and obj.status.phase or "Waiting for CAPI"
+      return hs
+    resource.customizations.health.infra.csoc.js2.org_SpokeRegistration: |
+      hs = {}
+      if obj.status ~= nil and obj.status.registered == true then
+        hs.status = "Healthy"
+      elseif obj.status ~= nil and obj.status.message == "DeregistrationBlocked" then
+        hs.status = "Degraded"
+      else
+        hs.status = "Progressing"
+      end
+      hs.message = obj.status and obj.status.message or "Waiting for registration"
+      return hs
+    resource.customizations.health.services.csoc.js2.org_JupyterHubInstance: |
+      hs = {}
+      hs.status = obj.status and obj.status.ready == true and "Healthy" or "Progressing"
+      hs.message = obj.status and obj.status.health or "Waiting for Argo application"
+      return hs
+
+extraObjects:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: csoc-sops-helm-plugin
+      namespace: argocd
+    data:
+      plugin.yaml: |
+        apiVersion: argoproj.io/v1alpha1
+        kind: ConfigManagementPlugin
+        metadata:
+          name: csoc-sops-helm
+        spec:
+          version: v1.0
+          discover:
+            fileName: .csoc-cmp
+          generate:
+            command: [/usr/local/bin/csoc-cmp-generate]
+          preserveFileMode: false
+          provideGitCreds: false
