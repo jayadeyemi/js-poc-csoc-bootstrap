@@ -11,8 +11,10 @@
 - Never rename, adopt, or shrink an existing Magnum cluster. Plan a blue/green
   migration with backup, acceptance, rollback, and exact-UUID retirement.
 - Boot volumes are OS/controller storage, not application persistence. Use 20
-  GiB for all three profiles unless current image-size preflight evidence
-  requires more; use separate Cinder PVCs for persistent application data.
+  GiB for dev, 40 GiB for staging, and 60 GiB for prod; use separate Cinder
+  PVCs for persistent application data. Verify one bootable, `in-use`,
+  non-multiattach root attached only to each expected server and reject a
+  visible cross-project attachment.
 - No script may infer ownership from a cluster name. Only the profile's ignored
   state file can authorize mutable operations, and deletion remains explicit.
 - Static validation may run freely. Provisioning, apply, mutation, deletion,

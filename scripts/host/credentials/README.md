@@ -90,6 +90,12 @@ tuple owned by that account, this creates `<canonical-tuple>-cloud-config` and
 `spokeclusters-<canonical-tuple>`. The helper rejects unrestricted credentials,
 project mismatches, and account tuples that span projects.
 
+For the v1 scale benchmark, create eleven separate restricted credentials
+under `accounts/scale-00` through `accounts/scale-10`. They intentionally
+share the approved OpenStack project but must have different credential IDs
+and a 90-day expiration. Load all eleven before starting either timed phase;
+credential creation and Secret loading are not included in provisioning time.
+
 ---
 
 ## Security notes

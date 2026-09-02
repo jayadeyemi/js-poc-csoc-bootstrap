@@ -43,6 +43,13 @@ separate because they inspect provider state or perform gated cleanup.
   deletion monitoring
 - `operations/spokes/destroy-spoke.sh`: Git-retirement and project-gated
   workload → CAPI/CAPO → KRO/ORC spoke teardown
+- `operations/benchmarks/run-v1-scale.sh --phase single|batch`: enqueue the
+  manual staging v1 benchmark Applications and record actual OpenStack plus
+  Kubernetes readiness. It refuses existing phase resources, captures
+  diagnostics on timeout, and never submits cleanup.
+- `operations/benchmarks/preflight-v1-scale.sh single|batch`: read-only
+  credential isolation, ownership, name/CIDR, and cloud quota headroom gate;
+  the timed runner invokes it before recording T0.
 
 ## `lib/` — source-only Bash modules
 
@@ -54,6 +61,11 @@ and should not be invoked directly.
 These scripts run static validation, fake-CLI lifecycle tests, manifest
 rendering, and secret scanning. `make validate` is the authoritative local
 gate.
+
+`tools/activate-v1-rgds.sh` publishes the 22 staging compatibility definitions in
+their declared dependency order. Recovery of an inactive definition is
+separately gated and refuses to recreate its generated API while any instances
+exist.
 
 ## Test code outside `scripts/`
 

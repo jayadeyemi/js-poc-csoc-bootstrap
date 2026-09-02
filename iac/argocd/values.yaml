@@ -12,16 +12,30 @@ server:
 
 repoServer:
   replicas: 1
+  # Upstream default: no request/limit. Exposed for benchmark tuning.
+  resources: {}
 
 applicationSet:
   replicas: 0
 
 controller:
   replicas: 1
+  # Upstream default: no request/limit. Increase with processor counts.
+  resources: {}
 
 configs:
   params:
     server.insecure: "false"
+    # Application reconciliation workers.
+    controller.status.processors: "20"
+    controller.operation.processors: "10"
+    # Concurrent kubectl fork/exec operations during sync.
+    controller.kubectl.parallelism.limit: "20"
+    # Management-cluster Kubernetes API client throttle.
+    controller.k8s.client.qps: "50"
+    controller.k8s.client.burst: "100"
+    # Concurrent manifest generation; the pinned upstream default is one.
+    reposerver.parallelism.limit: "1"
   cm:
     # Track resources via annotation so Argo doesn't fight with other controllers
     application.resourceTrackingMethod: annotation

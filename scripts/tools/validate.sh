@@ -77,8 +77,11 @@ for root_manifest in "${REPO_ROOT}"/iac/csoc/profiles/*-app-of-apps.yaml; do
     || log::die "App-of-Apps must belong to rgds: ${root_manifest}"
 done
 for controller in "${REPO_ROOT}"/controllers/*.yaml; do
-  [[ $(yq -r '.spec.project' "${controller}") == rgds ]] \
-    || log::die "Controller Application must belong to rgds: ${controller}"
+  mapfile -t controller_projects < <(yq eval-all -r 'select(.kind == "Application") | .spec.project' "${controller}")
+  if (( ${#controller_projects[@]} > 0 )); then
+    [[ "${controller_projects[*]}" == rgds ]] \
+      || log::die "Controller Application must belong to rgds: ${controller}"
+  fi
 done
 for resource in \
   'cert-manager.io:Certificate' \
@@ -97,7 +100,8 @@ done
 source "${REPO_ROOT}/scripts/lib/csoc-profile.bash"
 for profile in dev staging prod; do
   (
-    unset CSOC_PROFILE_NAME CSOC_FLEET_ENABLED CSOC_BOOTSTRAP_REVISION
+    unset CSOC_PROFILE_NAME CSOC_FLEET_ENABLED CSOC_BOOTSTRAP_FLEET_INSTANCES
+    unset CSOC_BOOTSTRAP_REVISION
     unset CSOC_CATALOG_REVISION CSOC_FLEET_REVISION CSOC_ARGO_ROOT_MANIFEST_REL
     unset CSOC_APPLICATION_DIR_REL CSOC_FLEET_PATH MAGNUM_CLUSTER_NAME
     unset MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR MAGNUM_MASTER_COUNT
@@ -133,9 +137,9 @@ for profile in dev staging prod; do
 done
 [[ $(CSOC_PROFILE=dev bash -c 'source "$1"; csoc::load_profile "$2"; printf "%s:%s:%s" "$MAGNUM_BOOT_VOLUME_SIZE" "$MAGNUM_MASTER_FLAVOR" "$CSOC_FLEET_ENABLED"' _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 20:m3.quad:false ]] \
   || log::die "Dev must use the quad no-fleet profile"
-[[ $(CSOC_PROFILE=staging bash -c 'source "$1"; csoc::load_profile "$2"; printf "%s:%s" "$MAGNUM_BOOT_VOLUME_SIZE" "$CSOC_FLEET_ENABLED"' _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 20:true ]] \
+[[ $(CSOC_PROFILE=staging bash -c 'source "$1"; csoc::load_profile "$2"; printf "%s:%s:%s" "$MAGNUM_BOOT_VOLUME_SIZE" "$CSOC_FLEET_ENABLED" "$CSOC_BOOTSTRAP_FLEET_INSTANCES"' _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 40:true:false ]] \
   || log::die "Staging sizing or fleet policy is incorrect"
-[[ $(CSOC_PROFILE=prod bash -c 'source "$1"; csoc::load_profile "$2"; printf "%s:%s:%s" "$MAGNUM_BOOT_VOLUME_SIZE" "$MAGNUM_MASTER_COUNT" "$CSOC_FLEET_ENABLED"' _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 20:3:true ]] \
+[[ $(CSOC_PROFILE=prod bash -c 'source "$1"; csoc::load_profile "$2"; printf "%s:%s:%s" "$MAGNUM_BOOT_VOLUME_SIZE" "$MAGNUM_MASTER_COUNT" "$CSOC_FLEET_ENABLED"' _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 60:3:true ]] \
   || log::die "Prod sizing or fleet policy is incorrect"
 [[ ! -e "${REPO_ROOT}/argocd/apps/csoc-baseline.yaml" \
    && ! -d "${REPO_ROOT}/argocd/applicationsets" ]] \
@@ -170,12 +174,12 @@ yq -e '.spec.namespaceResourceWhitelist[] | select(.group == "apps.csoc.js2.org"
 [[ $(yq -r '.spec.orphanedResources.warn' "${REPO_ROOT}/argocd/projects/csoc-fleet.yaml") == true ]] \
   || log::die "Fleet project must warn about Git-retired resources awaiting deliberate teardown"
 for fleet_app in "${REPO_ROOT}"/argocd/environments/{staging,prod}/apps/fleet.yaml; do
-  [[ $(yq -r '.spec.syncPolicy.automated.prune' "${fleet_app}") == false ]] \
+  [[ $(yq -r '.spec.syncPolicy.automated == null or .spec.syncPolicy.automated.prune == false' "${fleet_app}") == true ]] \
     || log::die "Fleet pruning must remain disabled: ${fleet_app}"
 done
 
 log::step 3 "Validating identity and network RGD restrictions"
-RGD_PACKAGE_ROOT="${CATALOG_ROOT}/rgds/test-poc"
+RGD_PACKAGE_ROOT="${CATALOG_ROOT}/rgds/v1-samples"
 IDENTITY_RGD="${RGD_PACKAGE_ROOT}/cluster/v1/spoke-identity.rgd.yaml"
 CONFIG_RGD="${RGD_PACKAGE_ROOT}/configmaps/immutable-spoke-config.rgd.yaml"
 ENV_CONFIG_RGD="${RGD_PACKAGE_ROOT}/configmaps/spoke-environment-config.rgd.yaml"
@@ -405,7 +409,12 @@ while IFS='|' read -r account app environment owner path; do
      && $(yq -r '.metadata.name' "${FLEET_ROOT}/${path}/cluster.yaml") == "${canonical_name}" \
      && $(yq -r '.metadata.namespace' "${FLEET_ROOT}/${path}/cluster.yaml") == "spokeclusters-${canonical_name}" ]] \
     || log::die "Fleet tuple ${key} does not use its canonical name/namespace"
-  if [[ -f "${FLEET_ROOT}/${path}/hello-app.yaml" ]]; then
+  if [[ "${owner}/${account}/${app}/${environment}" =~ ^staging/scale-(0[0-9]|10)/kubernetes/dev$ ]]; then
+    [[ ! -e "${FLEET_ROOT}/${path}/hello-app.yaml" \
+       && ! -e "${FLEET_ROOT}/${path}/argocd.yaml" \
+       && ! -e "${FLEET_ROOT}/${path}/application.yaml" ]] \
+      || log::die "Benchmark tuple ${key} must contain infrastructure instances only"
+  elif [[ -f "${FLEET_ROOT}/${path}/hello-app.yaml" ]]; then
     [[ ! -e "${FLEET_ROOT}/${path}/argocd.yaml" \
        && ! -e "${FLEET_ROOT}/${path}/application.yaml" \
        && $(yq -r '.spec.clusterName' "${FLEET_ROOT}/${path}/hello-app.yaml") == "${canonical_name}" ]] \
@@ -498,12 +507,16 @@ if [[ -n $(yq -r 'select(.metadata.name == "argocd-applicationset-controller") |
 fi
 helm template cert-manager cert-manager --repo https://charts.jetstack.io \
   --version "v${CERT_MANAGER_VERSION}" --namespace cert-manager --set crds.enabled=true >/dev/null
+yq -r '.spec.source.helm.values' "${REPO_ROOT}/controllers/kro.yaml" >"${render_dir}/kro-values.yaml"
 helm template kro oci://registry.k8s.io/kro/charts/kro \
-  --version "${KRO_VERSION}" --namespace kro-system >/dev/null
+  --version "${KRO_VERSION}" --namespace kro-system \
+  --values "${render_dir}/kro-values.yaml" >/dev/null
 
 log::step 7 "Running local lifecycle and credential regression tests"
 bash "${REPO_ROOT}/tests/magnum/run.sh"
 bash "${REPO_ROOT}/tests/credentials/run.sh"
 bash "${REPO_ROOT}/tests/spokes/run.sh"
+bash "${REPO_ROOT}/scripts/tools/validate-controller-scale-defaults.sh"
+bash "${REPO_ROOT}/scripts/tools/validate-kro-v2-rbac.sh"
 
 log::success "All modular KRO non-destructive validation checks passed."
