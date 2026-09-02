@@ -72,6 +72,8 @@ caaph_args=$(yq -r '.addon.helm.deployment.containers[] | select(.name == "manag
 
 [[ $(yq -r '.spec.source.path' "${REPO_ROOT}/controllers/orc.yaml") == config/default ]]   || die "ORC must render the pinned Kustomize package"
 rg -q -- '--scope-cache-max-size=10' "${REPO_ROOT}/controllers/orc.yaml"   || die "ORC cache default is not exposed"
+rg -q 'image: quay.io/orc/openstack-resource-controller:v2.6.0' "${REPO_ROOT}/controllers/orc.yaml" \
+  || die "ORC config/default image is not pinned"
 rg -q 'requests: \{cpu: 10m, memory: 64Mi\}' "${REPO_ROOT}/controllers/orc.yaml"   || die "ORC resource defaults are not exposed"
 
 [[ $(yq -r '[.configs.params."controller.status.processors",
