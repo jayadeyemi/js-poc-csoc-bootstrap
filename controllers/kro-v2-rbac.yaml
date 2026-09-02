@@ -53,7 +53,7 @@ rules:
     resources: [networks, subnets, routers, routerinterfaces, images, volumetypes, keypairs, securitygroups, servergroups, volumes]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [cluster.x-k8s.io]
-    resources: [clusters, machinedeployments]
+    resources: [clusters, machinedeployments, machinedeployments/scale, machines, machinesets, machinepools]
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [infrastructure.cluster.x-k8s.io]
     resources: [openstackclusteridentities, openstackclusters, openstackmachinetemplates]

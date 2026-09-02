@@ -221,6 +221,7 @@ spoke_kubernetes_ready() {
   min_workers=$(NAME="${spoke}" yq -r     '.spec.spokes[] | select(.name == strenv(NAME)) | .minWorkers' "${INVENTORY}")
   control_planes=$(NAME="${spoke}" yq -r     '.spec.spokes[] | select(.name == strenv(NAME)) | .controlPlanes' "${INVENTORY}")
   [[ $(kubectl get spokecluster "${spoke}" -n "${namespace}" -o json 2>/dev/null       | jq -r '.status.ready // false') == true ]] &&
+  [[ $(kubectl get spokecluster "${spoke}" -n "${namespace}" -o json 2>/dev/null       | jq -r '[.status.conditions[]? | select(.type == "Ready" and .status == "True")] | length') -ge 1 ]] &&
   [[ $(kubectl get cluster "${spoke}" -n "${namespace}" -o json 2>/dev/null       | jq -r '[.status.conditions[]? | select((.type == "Available" or .type == "Ready") and .status == "True")] | length') -ge 1 ]] &&
   (( $(kubectl get kubeadmcontrolplane "${spoke}-control-plane" -n "${namespace}" -o json 2>/dev/null       | jq -r '.status.readyReplicas // 0') >= control_planes )) &&
   (( $(kubectl get machinedeployment "${spoke}-workers" -n "${namespace}" -o json 2>/dev/null       | jq -r '.status.readyReplicas // 0') >= min_workers ))

@@ -16,6 +16,21 @@ jq -e '
   exit 1
 }
 
+# Kubernetes prevents a service account from creating a Role that grants
+# permissions it does not itself hold. The v1 spoke graph delegates these
+# namespace-scoped CAPI permissions to each spoke autoscaler.
+for resource in machinedeployments machinedeployments/scale machines machinesets machinepools; do
+  for verb in get list watch update patch; do
+    jq -e --arg resource "${resource}" --arg verb "${verb}" '
+      any(.rules[]; (.apiGroups | index("cluster.x-k8s.io")) != null and
+        (.resources | index($resource)) != null and (.verbs | index($verb)) != null)
+    ' <<<"${role_json}" >/dev/null || {
+      echo "KRO aggregation role cannot delegate ${verb} on cluster.x-k8s.io/${resource}" >&2
+      exit 1
+    }
+  done
+done
+
 plural() {
   case "$1" in
     Namespace) echo namespaces ;;
