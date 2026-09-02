@@ -60,7 +60,7 @@ expect_pass "dev profile isolates graph development and disables fleet" \
   _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}"
 
 expect_pass "prod profile freezes an HA control plane and coordinated branch" \
-  bash -c 'unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR; CSOC_PROFILE=prod; export CSOC_PROFILE; source "$1"; csoc::load_profile "$2"; [[ "$MAGNUM_MASTER_COUNT" == 3 && "$MAGNUM_MASTER_FLAVOR" == m3.small && "$CSOC_CATALOG_REVISION" == environment/prod && "$CSOC_FLEET_ENABLED" == true && "$MAGNUM_BOOT_VOLUME_SIZE" == 20 ]]' \
+  bash -c 'unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR; CSOC_PROFILE=prod; export CSOC_PROFILE; source "$1"; csoc::load_profile "$2"; [[ "$MAGNUM_MASTER_COUNT" == 3 && "$MAGNUM_MASTER_FLAVOR" == m3.small && "$CSOC_CATALOG_REVISION" == environment/prod && "$CSOC_FLEET_ENABLED" == true && "$MAGNUM_BOOT_VOLUME_SIZE" == 60 ]]' \
   _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}"
 
 expect_pass "preflight accepts separated credentials and exact infrastructure" \
@@ -170,6 +170,18 @@ FAKE_KUBE_CAN_LIST_NODES=no \
   bash "${CHECKER}" --name js-csoc-dev \
     --kubeconfig "${MAGNUM_KUBECONFIG_DIR}/js-csoc-dev.yaml" --minimum-ready 2
 FAKE_CLUSTER_EXISTS=true expect_pass "readiness verifies nodes, DNS, roots, and bounds" \
+  bash "${REPO_ROOT}/scripts/bootstrap/magnum/verify.sh"
+FAKE_CLUSTER_EXISTS=true FAKE_SERVER_EXTRA_VOLUME=true \
+  expect_fail "readiness rejects an unexpected additional volume attachment" \
+  bash "${REPO_ROOT}/scripts/bootstrap/magnum/verify.sh"
+FAKE_CLUSTER_EXISTS=true FAKE_VOLUME_MULTIATTACH=true \
+  expect_fail "readiness rejects a multi-attach boot volume" \
+  bash "${REPO_ROOT}/scripts/bootstrap/magnum/verify.sh"
+FAKE_CLUSTER_EXISTS=true FAKE_VOLUME_ATTACHMENT_SERVER=unrelated-server \
+  expect_fail "readiness rejects a boot volume attached to another server" \
+  bash "${REPO_ROOT}/scripts/bootstrap/magnum/verify.sh"
+FAKE_CLUSTER_EXISTS=true FAKE_VOLUME_PROJECT_ID=unrelated-project \
+  expect_fail "readiness rejects a boot volume owned by another project" \
   bash "${REPO_ROOT}/scripts/bootstrap/magnum/verify.sh"
 FAKE_CLUSTER_EXISTS=true MAGNUM_VERIFY_NODE_MODE=bounds \
   expect_pass "ongoing readiness accepts worker counts within autoscaling bounds" \

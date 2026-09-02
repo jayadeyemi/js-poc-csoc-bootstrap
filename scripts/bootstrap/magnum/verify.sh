@@ -51,7 +51,7 @@ kubectl -n "${DNS_NAMESPACE}" logs dns-smoke \
 cleanup_dns
 trap - EXIT
 
-log::step 3 "Checking 100-GiB roots and default worker autoscaling bounds"
+log::step 3 "Checking ${MAGNUM_BOOT_VOLUME_SIZE}-GiB roots and default worker bounds"
 STACK_ID=$(jq -r '.stack_id' <<<"${CLUSTER_JSON}")
 mapfile -t SERVER_IDS < <(openstack server list -f json \
   | jq -r --arg stack "${STACK_ID}" '.[] | select((.Name // .name // "") | contains($stack)) | (.ID // .id)')
@@ -66,11 +66,28 @@ else
 fi
 for server_id in "${SERVER_IDS[@]}"; do
   SERVER_JSON=$(openstack server show "${server_id}" -f json)
-  volume_id=$(jq -r '.volumes_attached[0].id // ."volumes_attached"[0].id // empty' <<<"${SERVER_JSON}")
-  [[ -n "${volume_id}" ]] || log::die "Server ${server_id} has no attached boot volume"
+  mapfile -t attached_volume_ids < <(jq -r '(.volumes_attached // [])[]? | .id // empty' <<<"${SERVER_JSON}")
+  (( ${#attached_volume_ids[@]} == 1 )) \
+    || log::die "Server ${server_id} must have exactly one boot volume attachment"
+  volume_id=${attached_volume_ids[0]}
   VOLUME_JSON=$(openstack volume show "${volume_id}" -f json)
+  [[ $(jq -r '.id // empty' <<<"${VOLUME_JSON}") == "${volume_id}" ]] \
+    || log::die "Server ${server_id} volume lookup did not return the attached UUID"
   [[ $(jq -r '.size' <<<"${VOLUME_JSON}") == "${MAGNUM_BOOT_VOLUME_SIZE}" ]] \
     || log::die "Server ${server_id} boot volume is not ${MAGNUM_BOOT_VOLUME_SIZE} GiB"
+  [[ $(jq -r '(.status // "") | ascii_downcase' <<<"${VOLUME_JSON}") == in-use ]] \
+    || log::die "Server ${server_id} boot volume is not in-use"
+  [[ $(jq -r '(.bootable // false) | tostring | ascii_downcase' <<<"${VOLUME_JSON}") == true ]] \
+    || log::die "Server ${server_id} root attachment is not marked bootable"
+  [[ $(jq -r '(.multiattach // false) | tostring | ascii_downcase' <<<"${VOLUME_JSON}") == false ]] \
+    || log::die "Server ${server_id} boot volume must not permit multi-attach"
+  [[ $(jq -r --arg server "${server_id}" \
+       '(.attachments // []) | length == 1 and ((.[0].server_id // .[0].serverId // "") == $server)' \
+       <<<"${VOLUME_JSON}") == true ]] \
+    || log::die "Boot volume ${volume_id} is not attached only to expected server ${server_id}"
+  volume_project=$(jq -r '."os-vol-tenant-attr:tenant_id" // .project_id // empty' <<<"${VOLUME_JSON}")
+  [[ -z "${volume_project}" || "${volume_project}" == "${MAGNUM_PROJECT_ID}" ]] \
+    || log::die "Server ${server_id} boot volume belongs to a different OpenStack project"
 done
 NODEGROUP_JSON=$(openstack coe nodegroup show "${CLUSTER_ID}" default-worker -f json)
 [[ $(jq -r '.min_node_count' <<<"${NODEGROUP_JSON}") == "${MAGNUM_MIN_NODE_COUNT}" \

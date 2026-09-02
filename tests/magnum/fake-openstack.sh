@@ -145,8 +145,22 @@ case "${args}" in
   "server list -f json")
     printf '[{"ID":"server-1","Name":"js2-stack-control-plane","Status":"ACTIVE"},{"ID":"server-2","Name":"js2-stack-worker","Status":"ACTIVE"}]\n'
     ;;
-  "server show server-1 -f json") printf '{"volumes_attached":[{"id":"volume-1"}]}\n' ;;
+  "server show server-1 -f json")
+    if [[ "${FAKE_SERVER_EXTRA_VOLUME:-false}" == true ]]; then
+      printf '{"volumes_attached":[{"id":"volume-1"},{"id":"unexpected-volume"}]}\n'
+    else
+      printf '{"volumes_attached":[{"id":"volume-1"}]}\n'
+    fi
+    ;;
   "server show server-2 -f json") printf '{"volumes_attached":[{"id":"volume-2"}]}\n' ;;
-  volume\ show*) printf '{"size":%s}\n' "${boot_volume_size}" ;;
+  volume\ show*)
+    volume_id=$3
+    expected_server=server-1
+    [[ "${volume_id}" == volume-2 ]] && expected_server=server-2
+    printf '{"id":"%s","size":%s,"status":"%s","bootable":"%s","multiattach":%s,"attachments":[{"server_id":"%s"}],"os-vol-tenant-attr:tenant_id":"%s"}\n' \
+      "${volume_id}" "${boot_volume_size}" "${FAKE_VOLUME_STATUS:-in-use}" \
+      "${FAKE_VOLUME_BOOTABLE:-true}" "${FAKE_VOLUME_MULTIATTACH:-false}" \
+      "${FAKE_VOLUME_ATTACHMENT_SERVER:-${expected_server}}" "${FAKE_VOLUME_PROJECT_ID:-${project}}"
+    ;;
   *) printf 'Unhandled fake openstack command: %s\n' "${args}" >&2; exit 64 ;;
 esac
