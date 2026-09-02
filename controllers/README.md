@@ -36,3 +36,28 @@ unreachable spoke retains its finalizer.
 - `prune: false` on all Applications — controller removal is always a deliberate action.
 - `ServerSideApply=true` on all Applications.
 - Retry: 10 attempts, exponential backoff capped at 3 minutes.
+
+## Scale controls
+
+The manifests expose the effective defaults so a benchmark can identify the
+limiting queue before any value is raised.
+
+| Controller | Exposed defaults | What the knobs control |
+|---|---|---|
+| Argo CD | status `20`, operations `10`, kubectl `20`, API `50/100`, repo generation `1` | Application observation, concurrent syncs, child kubectl processes, API throttling, and manifest generation |
+| KRO | RGD `1`, GraphRevision `1`, dynamic instances `1`, API `100/150`, rate/burst `10/100` | Definition compilation and instance graph work; dynamic concurrency is the first scale-test tuning point |
+| CAPI core | object reconcilers `10`, cluster cache `100`, API `20/30` | CAPI object workers, workload-cluster cache startup, and management API throttle |
+| kubeadm providers | config/control-plane `10`, cache `100`, API `20/30` | Bootstrap data and control-plane reconciliation |
+| CAPO | cluster/machine/template `10`, credential cache `10`, API `20/30` | Parallel OpenStack cluster and Nova work plus cached credential scopes |
+| CAAPH | chart/release `10`, API `20/30` | Concurrent addon reconciliation |
+| ORC | replica `1`, credential cache `10` | Cached OpenStack scopes only; v2.6.0 has no reconcile-concurrency or Kubernetes-client-QPS flag |
+
+CAPI provider releases and Argo CD have no resource request/limit defaults;
+their explicit `resources: {}` entries document that fact. KRO and ORC retain
+their pinned upstream requests and limits. Raise KRO dynamic concurrency first
+after the default run. With eleven identities, raise ORC's cache to at least
+`16` to avoid eviction, but do not describe this as additional reconcile
+workers. Any concurrency increase must be paired with adequate CPU/memory and,
+where supported, QPS/burst. If controller logs show client throttling, increase
+QPS and burst together; if OpenStack reports HTTP 429, timeout, or capacity
+errors, reduce concurrency instead.

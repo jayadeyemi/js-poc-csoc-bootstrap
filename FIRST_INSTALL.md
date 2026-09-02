@@ -26,7 +26,7 @@ instances have been manually server-side dry-run/applied in dependency order.
 | `js-poc-csoc-fleet/accounts/<identity>/cluster.yaml` | Set only mutable `minNodes` and `maxNodes`. |
 | `js-poc-csoc-fleet/accounts/<identity>/hello-app.yaml` | Optional spoke Hello workload; public access is restricted by the immutable account `/32`. |
 | `js-poc-csoc-fleet/csoc/hello-app.yaml` | CSOC-local `HelloApp` instance; normally retain the reviewed defaults. |
-| `js-poc-csoc-app-catalog/rgds/test-poc/` | Review the tested OpenStack profile; Argo renders it only through `rgds/kustomization.yaml`. |
+| `js-poc-csoc-app-catalog/rgds/v1-samples/` | Review the tested OpenStack profile; Argo renders it only through `rgds/kustomization.yaml`. |
 
 Start from `js-poc-csoc-fleet/examples/accounts/test-poc/`. Copy only the
 selected network variant as `network.yaml`; do not activate all variants. The

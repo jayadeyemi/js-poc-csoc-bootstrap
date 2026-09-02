@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prove KRO aggregation covers every v2 generated or referenced GVK without wildcards.
+# Prove KRO aggregation covers every generated or referenced GVK without wildcards.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,10 +20,20 @@ plural() {
   case "$1" in
     Namespace) echo namespaces ;;
     ConfigMap) echo configmaps ;;
+    Secret) echo secrets ;;
+    Service) echo services ;;
+    ServiceAccount) echo serviceaccounts ;;
     ResourceQuota) echo resourcequotas ;;
+    Deployment) echo deployments ;;
+    Role) echo roles ;;
+    RoleBinding) echo rolebindings ;;
     AppProject) echo appprojects ;;
     RouterInterface) echo routerinterfaces ;;
     VolumeType) echo volumetypes ;;
+    KeyPair) echo keypairs ;;
+    SecurityGroup) echo securitygroups ;;
+    ServerGroup) echo servergroups ;;
+    SpokeGitOps) echo spokegitops ;;
     OpenStackClusterIdentity) echo openstackclusteridentities ;;
     KubeadmConfigTemplate) echo kubeadmconfigtemplates ;;
     KubeadmControlPlane) echo kubeadmcontrolplanes ;;
@@ -44,9 +54,9 @@ while IFS="$(printf '\t')" read -r api_version kind; do
     exit 1
   }
 done < <(
-  for rgd in "${CATALOG_ROOT}"/rgds/v2/{infrastructure,bindings,services}/*.yaml; do
+  while IFS= read -r -d '' rgd; do
     yq -r '.spec.resources[] | ((.template // .externalRef).apiVersion + "\t" + (.template // .externalRef).kind)' "${rgd}"
-  done | sort -u
+  done < <(find "${CATALOG_ROOT}/rgds" -type f -name '*.rgd*.yaml' -print0) | sort -u
 )
 
 while IFS="$(printf '\t')" read -r group resource; do
@@ -58,12 +68,12 @@ while IFS="$(printf '\t')" read -r group resource; do
     exit 1
   }
 done < <(
-  for rgd in "${CATALOG_ROOT}"/rgds/v2/{infrastructure,bindings,services}/*.yaml; do
+  while IFS= read -r -d '' rgd; do
     [[ $(yq -r '.kind' "${rgd}") == ResourceGraphDefinition ]] || continue
     group=$(yq -r '.spec.schema.group' "${rgd}")
     kind=$(yq -r '.spec.schema.kind' "${rgd}")
     printf '%s\t%s\n' "${group}" "$(plural "${kind}")"
-  done | sort -u
+  done < <(find "${CATALOG_ROOT}/rgds" -type f -name '*.rgd*.yaml' -print0) | sort -u
 )
 
-echo "KRO v2 aggregation GVK inventory is explicit and complete"
+echo "KRO dual-generation aggregation GVK inventory is explicit and complete"

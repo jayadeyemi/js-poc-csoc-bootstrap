@@ -9,7 +9,7 @@ CATALOG_ROOT="${WORKSPACE_ROOT}/js-poc-csoc-app-catalog"
 FLEET_ROOT="${WORKSPACE_ROOT}/js-poc-csoc-fleet"
 CONFIG_ROOT="${WORKSPACE_ROOT}/../references/config"
 GITOPS_ROOT="${WORKSPACE_ROOT}/../references/gitops"
-V2_ROOT="${CATALOG_ROOT}/rgds/v2"
+V2_ROOT="${CATALOG_ROOT}/rgds/v2-hubs"
 
 source "${REPO_ROOT}/versions.env"
 
@@ -28,7 +28,7 @@ for yaml_file in "${v2_yaml_files[@]}"; do
     || { echo "v2 RGD manifest must contain exactly one document: ${yaml_file}" >&2; exit 1; }
 done
 kubectl kustomize "${CATALOG_ROOT}/rgds" >/dev/null
-kubectl kustomize "${CATALOG_ROOT}/rgds/v2" >/dev/null
+kubectl kustomize "${CATALOG_ROOT}/rgds/v2-hubs" >/dev/null
 declare -A expected_waves=(
   [SpokeAccount]=-12 [MachineProfile]=-11 [SpokeNetwork]=-11 [WorkloadCluster]=-10
   [SpokeNodePool]=-9 [SpokeRegistration]=-9 [ClusterFoundation]=-8 [ApplicationBoundary]=-8

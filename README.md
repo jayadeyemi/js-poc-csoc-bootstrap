@@ -9,13 +9,19 @@ instances to GitOps.
 | Profile | Magnum ownership | Git sources | Fleet |
 |---|---|---|---|
 | `dev` | New `js-csoc-dev`; 1 × `m3.quad` control plane, 1 worker, 20-GiB roots | coordinated `environment/dev` | disabled; graphs only |
-| `staging` | New `js-csoc-staging`; 3 × `m3.small` control plane, 2 workers, 20-GiB roots | coordinated `environment/staging` | assigned dev tuples |
-| `prod` | New `js-csoc-prod`; 3 × `m3.small` control plane, 3 workers, 20-GiB roots | coordinated `environment/prod` | prod and explicitly routed dev tuples |
+| `staging` | New `js-csoc-staging`; 3 × `m3.small` control plane, 2 workers, 40-GiB roots | coordinated `environment/staging` | assigned dev tuples |
+| `prod` | New `js-csoc-prod`; 3 × `m3.small` control plane, 3 workers, 60-GiB roots | coordinated `environment/prod` | prod and explicitly routed dev tuples |
 
 All three profiles are declarations only: nothing creates them unless an
 operator explicitly authorizes and runs provisioning. The existing
 `js2-mgmt-cluster-2` remains a legacy staging migration source; it is not
 adopted, renamed, or shrunk in place.
+
+Readiness rejects extra node-volume attachments, non-bootable or multiattach
+roots, roots not attached only to the expected server, and visible
+cross-project ownership. Persistent application data remains on separate
+retained Cinder PVCs rather than these environment-tiered roots. Cinder-layer
+encryption is not asserted without a provider-confirmed encrypted volume type.
 
 ## Quick start
 
@@ -46,7 +52,7 @@ Git synchronization when the local containers are stopped.
 ## Bootstrap sequence
 
 ```
-A container-build    B magnum-provision   C magnum-wait
+A container-build    B magnum-provision   C magnum-wait + worker bounds
 D magnum-kubeconfig  E argocd-install     F capi-secret
 G argocd-bootstrap   ← Argo installs CAPI/CAPO from here
 ```
@@ -110,7 +116,7 @@ an Argo Secret.
 ```bash
 make validate   # static Bash/YAML/JSON, Kustomize, Helm, secret-scan, and lifecycle tests
 make cmp-build cmp-verify # functional mode-specific CMP rendering and rejection tests
-CSOC_KIND_COMPILE_APPROVED=true make v2-kind-compile # retained local KRO 0.9.3 compile cluster
+CSOC_KIND_COMPILE_APPROVED=true make v2-kind-compile # retained local KRO 0.9.3 dual-generation compile cluster
 make validate-clusters # every management profile and every declared spoke
 make clusters-verify-all # every provisioned CSOC and all of its active spokes
 ```

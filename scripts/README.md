@@ -54,14 +54,16 @@ and should not be invoked directly.
 These scripts run static validation, fake-CLI lifecycle tests, manifest
 rendering, and secret scanning. `make validate` is the authoritative local
 gate. The v2 contract check discovers the catalog's single-document RGD files
-recursively below `rgds/v2/`, compares chart GVKs with AppProject/RBAC policy,
+recursively below `rgds/v2-hubs/`, compares chart GVKs with AppProject/RBAC policy,
 and runs fake registration lifecycle/capacity tests. `make cmp-build
 cmp-verify` exercises mode-specific inputs in the real CMP image.
-`CSOC_KIND_COMPILE_APPROVED=true make v2-kind-compile` compiles every RGD,
+`CSOC_KIND_COMPILE_APPROVED=true make v2-kind-compile` compiles both RGD generations,
 exercises the pinned CAPI conversion webhooks, verifies autoscaler ownership of
 `MachineDeployment.spec.replicas` across a forced KRO reconcile, and retains
-the local kind cluster. `make v2-activate` is the explicitly gated equivalent
-for a selected non-production management cluster.
+the local kind cluster. `make v1-activate` and `make v2-activate` are the
+explicitly gated equivalents for a selected non-production management cluster.
+The v1 activator follows each declared sync wave and only recreates an inactive
+RGD when separately approved and its generated Kind has zero instances.
 
 Before the first v2 fleet apply, `preflight-v2-spoke.sh` resolves every numeric
 flavor, image, volume type, failure domain, external network, project, and live

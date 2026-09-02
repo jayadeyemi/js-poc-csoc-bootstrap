@@ -19,7 +19,7 @@ export CSOC_PROFILE = $(PROFILE)
 	csoc-plan csoc-resize clusters-verify clusters-verify-all \
 	credential-create capi-secret \
 	argocd-install argocd-manual-smoke argocd-bootstrap argocd-status \
-	cmp-build cmp-verify v2-render-verify v2-server-dry-run v2-activate v2-kind-compile \
+	cmp-build cmp-verify v2-render-verify v2-server-dry-run v1-activate v2-activate v2-kind-compile \
 	destroy-spoke \
 	bootstrap
 
@@ -58,7 +58,10 @@ v2-server-dry-run: ## Validate RGDs against an approved prepared controller API 
 v2-activate: ## Apply v2 RGDs and wait for Active GraphRevisions (explicitly gated)
 	bash scripts/tools/activate-v2-rgds.sh
 
-v2-kind-compile: ## Compile every v2 RGD in a retained local kind cluster (explicitly gated)
+v1-activate: ## Apply v1 RGDs sequentially and wait for Active GraphRevisions (explicitly gated)
+	bash scripts/tools/activate-v1-rgds.sh
+
+v2-kind-compile: ## Compile both RGD generations in a retained local kind cluster (explicitly gated)
 	bash scripts/tools/kind-compile-v2.sh
 
 preflight: ## Run read-only OpenStack and ownership checks

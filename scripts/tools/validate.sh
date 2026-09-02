@@ -148,9 +148,9 @@ done
 profile_probe='unset MAGNUM_CLUSTER_NAME MAGNUM_STATE_FILE MAGNUM_KUBECONFIG_DIR MAGNUM_MASTER_COUNT MAGNUM_MASTER_FLAVOR MAGNUM_NODE_COUNT MAGNUM_WORKER_FLAVOR MAGNUM_MIN_NODE_COUNT MAGNUM_MAX_NODE_COUNT MAGNUM_EXPECTED_INITIAL_NODES MAGNUM_BOOT_VOLUME_SIZE MAGNUM_AUTO_SCALING_ENABLED; source "$1"; csoc::load_profile "$2"'
 [[ $(CSOC_PROFILE=dev bash -c "${profile_probe}; printf '%s:%s:%s' \"\$MAGNUM_BOOT_VOLUME_SIZE\" \"\$MAGNUM_MASTER_FLAVOR\" \"\$CSOC_FLEET_ENABLED\"" _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 20:m3.quad:false ]] \
   || log::die "Dev must use the quad no-fleet profile"
-[[ $(CSOC_PROFILE=staging bash -c "${profile_probe}; printf '%s:%s' \"\$MAGNUM_BOOT_VOLUME_SIZE\" \"\$CSOC_FLEET_ENABLED\"" _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 20:true ]] \
+[[ $(CSOC_PROFILE=staging bash -c "${profile_probe}; printf '%s:%s' \"\$MAGNUM_BOOT_VOLUME_SIZE\" \"\$CSOC_FLEET_ENABLED\"" _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 40:true ]] \
   || log::die "Staging sizing or fleet policy is incorrect"
-[[ $(CSOC_PROFILE=prod bash -c "${profile_probe}; printf '%s:%s:%s' \"\$MAGNUM_BOOT_VOLUME_SIZE\" \"\$MAGNUM_MASTER_COUNT\" \"\$CSOC_FLEET_ENABLED\"" _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 20:3:true ]] \
+[[ $(CSOC_PROFILE=prod bash -c "${profile_probe}; printf '%s:%s:%s' \"\$MAGNUM_BOOT_VOLUME_SIZE\" \"\$MAGNUM_MASTER_COUNT\" \"\$CSOC_FLEET_ENABLED\"" _ "${REPO_ROOT}/scripts/lib/csoc-profile.bash" "${REPO_ROOT}") == 60:3:true ]] \
   || log::die "Prod sizing or fleet policy is incorrect"
 [[ ! -e "${REPO_ROOT}/argocd/apps/csoc-baseline.yaml" \
    && ! -d "${REPO_ROOT}/argocd/applicationsets" ]] \
@@ -190,7 +190,7 @@ for fleet_app in "${REPO_ROOT}"/argocd/environments/{staging,prod}/apps/fleet.ya
 done
 
 log::step 3 "Validating identity and network RGD restrictions"
-RGD_PACKAGE_ROOT="${CATALOG_ROOT}/rgds/test-poc"
+RGD_PACKAGE_ROOT="${CATALOG_ROOT}/rgds/v1-samples"
 IDENTITY_RGD="${RGD_PACKAGE_ROOT}/cluster/v1/spoke-identity.rgd.yaml"
 CONFIG_RGD="${RGD_PACKAGE_ROOT}/configmaps/immutable-spoke-config.rgd.yaml"
 ENV_CONFIG_RGD="${RGD_PACKAGE_ROOT}/configmaps/spoke-environment-config.rgd.yaml"
@@ -464,13 +464,16 @@ if [[ -n $(yq -r 'select(.metadata.name == "argocd-applicationset-controller") |
 fi
 helm template cert-manager cert-manager --repo https://charts.jetstack.io \
   --version "v${CERT_MANAGER_VERSION}" --namespace cert-manager --set crds.enabled=true >/dev/null
+yq -r '.spec.source.helm.values' "${REPO_ROOT}/controllers/kro.yaml" >"${render_dir}/kro-values.yaml"
 helm template kro oci://registry.k8s.io/kro/charts/kro \
-  --version "${KRO_VERSION}" --namespace kro-system >/dev/null
+  --version "${KRO_VERSION}" --namespace kro-system \
+  --values "${render_dir}/kro-values.yaml" >/dev/null
 
 log::step 7 "Running local lifecycle and credential regression tests"
 bash "${REPO_ROOT}/tests/magnum/run.sh"
 bash "${REPO_ROOT}/tests/credentials/run.sh"
 bash "${REPO_ROOT}/tests/spokes/run.sh"
+bash "${REPO_ROOT}/scripts/tools/validate-controller-scale-defaults.sh"
 bash "${REPO_ROOT}/tests/registration/run.sh"
 bash "${REPO_ROOT}/scripts/tools/validate-v2.sh"
 

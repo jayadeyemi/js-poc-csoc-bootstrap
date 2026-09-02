@@ -15,8 +15,8 @@ done
 
 render_dir=$(mktemp -d)
 trap 'rm -rf -- "${render_dir}"' EXIT HUP INT TERM
-boundary_rgd="${CATALOG_ROOT}/rgds/v2/bindings/applicationboundary.rgds.yaml"
-foundation_rgd="${CATALOG_ROOT}/rgds/v2/infrastructure/clusterfoundation.yaml"
+boundary_rgd="${CATALOG_ROOT}/rgds/v2-hubs/bindings/applicationboundary.rgds.yaml"
+foundation_rgd="${CATALOG_ROOT}/rgds/v2-hubs/infrastructure/clusterfoundation.yaml"
 
 assert_allowed() {
   rendered=$1 policy_rgd=$2 policy_id=$3

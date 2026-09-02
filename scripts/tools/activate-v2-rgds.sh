@@ -20,7 +20,7 @@ actual_context=$(kubectl config current-context)
 
 rendered=$(mktemp)
 trap 'rm -f -- "${rendered}"' EXIT HUP INT TERM
-kubectl kustomize "${CATALOG_ROOT}/rgds/v2" >"${rendered}"
+kubectl kustomize "${CATALOG_ROOT}/rgds/v2-hubs" >"${rendered}"
 mapfile -t rgds < <(yq eval-all -o=json '[select(.kind == "ResourceGraphDefinition") | .metadata.name]' "${rendered}" | jq -r '.[]' | sort)
 [[ ${#rgds[@]} -eq 23 ]] || { echo "expected 23 v2 RGDs, found ${#rgds[@]}" >&2; exit 1; }
 
@@ -45,10 +45,10 @@ wait_active() {
 apply_stage() {
   local manifest rgd
   for manifest in "$@"; do
-    kubectl apply --server-side --field-manager=csoc-v2-rgd-publisher -f "${CATALOG_ROOT}/rgds/v2/${manifest}" >/dev/null
+    kubectl apply --server-side --field-manager=csoc-v2-rgd-publisher -f "${CATALOG_ROOT}/rgds/v2-hubs/${manifest}" >/dev/null
   done
   for manifest in "$@"; do
-    rgd=$(yq -r '.metadata.name' "${CATALOG_ROOT}/rgds/v2/${manifest}")
+    rgd=$(yq -r '.metadata.name' "${CATALOG_ROOT}/rgds/v2-hubs/${manifest}")
     wait_active "${rgd}"
   done
 }

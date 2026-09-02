@@ -47,7 +47,7 @@ PROJECT_DIR="${BOOTSTRAP_SOURCE}/argocd/projects"
 CONTROLLER_DIR="${BOOTSTRAP_SOURCE}/controllers"
 APPLICATION_DIR="${BOOTSTRAP_SOURCE}/${CSOC_APPLICATION_DIR_REL}"
 RGD_DIR="${CATALOG_SOURCE}/rgds"
-RGD_PACKAGE_DIR="${RGD_DIR}/test-poc"
+RGD_PACKAGE_DIR="${RGD_DIR}/v1-samples"
 FLEET_ENV_DIR="${FLEET_SOURCE}/${CSOC_FLEET_PATH}"
 ACCOUNTS_DIR="${FLEET_ENV_DIR}/accounts"
 GATE_CONFIGMAP=argocd-manual-manifest-gate
@@ -342,8 +342,10 @@ fi
 # host-bootstrapped and intentionally renders only projects and child
 # Applications. Remove that stale marker before waiting so prune=false does not
 # leave the root permanently OutOfSync as an extraneous self-owned resource.
-kubectl annotate application csoc-app-of-apps -n argocd \
-  argocd.argoproj.io/tracking-id- --ignore-not-found=true >/dev/null
+if kubectl get application csoc-app-of-apps -n argocd >/dev/null 2>&1; then
+  kubectl annotate application csoc-app-of-apps -n argocd \
+    argocd.argoproj.io/tracking-id- >/dev/null
+fi
 STAGED_APP_OF_APPS="${SOURCE_ROOT}/app-of-apps-candidate.yaml"
 yq ".spec.source.targetRevision = \"${CSOC_BOOTSTRAP_REVISION}\"" \
   "${APP_OF_APPS}" >"${STAGED_APP_OF_APPS}"

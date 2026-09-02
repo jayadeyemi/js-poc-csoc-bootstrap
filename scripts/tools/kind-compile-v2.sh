@@ -28,6 +28,7 @@ curl -fsSL "https://github.com/kubernetes-sigs/cluster-api/releases/download/v${
 curl -fsSL "https://github.com/kubernetes-sigs/cluster-api/releases/download/v${CAPI_VERSION}/bootstrap-components.yaml" -o "${compile_dir}/bootstrap.yaml"
 curl -fsSL "https://github.com/kubernetes-sigs/cluster-api/releases/download/v${CAPI_VERSION}/control-plane-components.yaml" -o "${compile_dir}/control-plane.yaml"
 curl -fsSL "https://github.com/kubernetes-sigs/cluster-api-provider-openstack/releases/download/v${CAPO_VERSION}/infrastructure-components.yaml" -o "${compile_dir}/capo.yaml"
+curl -fsSL "https://github.com/kubernetes-sigs/cluster-api-addon-provider-helm/releases/download/v${CAAPH_VERSION}/addon-components.yaml" -o "${compile_dir}/caaph.yaml"
 curl -fsSL "https://raw.githubusercontent.com/k-orc/openstack-resource-controller/v${ORC_VERSION}/dist/install.yaml" -o "${compile_dir}/orc.yaml"
 
 helm upgrade --install cert-manager oci://quay.io/jetstack/charts/cert-manager \
@@ -36,7 +37,7 @@ helm upgrade --install cert-manager oci://quay.io/jetstack/charts/cert-manager \
 
 # Release component YAML is normally rendered by clusterctl. Resolve its
 # shell-style default placeholders so the local gate runs the real webhooks.
-for component in capi bootstrap control-plane capo; do
+for component in capi bootstrap control-plane capo caaph; do
   sed -E -i 's/\$\{[A-Za-z_][A-Za-z0-9_]*:=([^}]*)\}/\1/g' "${compile_dir}/${component}.yaml"
   ! rg -n '\$\{' "${compile_dir}/${component}.yaml" \
     || { echo "unresolved release placeholder in ${component}" >&2; exit 1; }
@@ -50,7 +51,8 @@ for deployment in \
   capi-system/capi-controller-manager \
   capi-kubeadm-bootstrap-system/capi-kubeadm-bootstrap-controller-manager \
   capi-kubeadm-control-plane-system/capi-kubeadm-control-plane-controller-manager \
-  capo-system/capo-controller-manager; do
+  capo-system/capo-controller-manager \
+  caaph-system/caaph-controller-manager; do
   kubectl -n "${deployment%/*}" rollout status "deployment/${deployment#*/}" --timeout=5m
 done
 helm template argocd argo-cd --repo https://argoproj.github.io/argo-helm \
@@ -66,6 +68,9 @@ kubectl -n kro-system rollout status deployment/kro --timeout=180s
 CSOC_V2_SERVER_DRY_RUN_APPROVED=true "${REPO_ROOT}/scripts/tools/server-dry-run-v2.sh"
 CSOC_V2_ACTIVATION_APPROVED=true CSOC_EXPECTED_CONTEXT="${context}" \
   bash "${REPO_ROOT}/scripts/tools/activate-v2-rgds.sh"
+CSOC_V1_ACTIVATION_APPROVED=true CSOC_V1_RECREATE_INACTIVE_APPROVED=true \
+  CSOC_EXPECTED_CONTEXT="${context}" \
+  bash "${REPO_ROOT}/scripts/tools/activate-v1-rgds.sh"
 CSOC_V2_REPLICAS_TEST_APPROVED=true CSOC_EXPECTED_CONTEXT="${context}" \
   bash "${REPO_ROOT}/scripts/tools/test-v2-replicas-ownership.sh"
 
