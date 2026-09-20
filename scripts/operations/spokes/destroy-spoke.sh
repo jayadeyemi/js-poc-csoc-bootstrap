@@ -76,29 +76,40 @@ wait_openstack_absent() {
 }
 
 log::step 1 "Proving Git and Argo no longer declare '${SPOKE}'"
-git -C "${FLEET_ROOT}" fetch --quiet origin main
-DESIRED_REVISION=$(git -C "${FLEET_ROOT}" rev-parse origin/main)
+# Under the environment-branch architecture each profile's live fleet state is
+# tracked on origin/environment/<profile>, not a shared origin/main scaffold;
+# and a spoke is owned either by csoc-fleet (ordinary accounts) or by its own
+# manual, phase-labeled Application (benchmark/scale spokes) — never both.
+FLEET_BRANCH="environment/${CSOC_PROFILE}"
+git -C "${FLEET_ROOT}" fetch --quiet origin "${FLEET_BRANCH}"
+DESIRED_REVISION=$(git -C "${FLEET_ROOT}" rev-parse "origin/${FLEET_BRANCH}")
 DESIRED_TREE="$(mktemp -d)"
 cleanup() {
   rm -rf -- "${DESIRED_TREE}"
 }
 trap cleanup EXIT
-git -C "${FLEET_ROOT}" archive origin/main | tar -x -C "${DESIRED_TREE}"
+git -C "${FLEET_ROOT}" archive "origin/${FLEET_BRANCH}" | tar -x -C "${DESIRED_TREE}"
 kubectl kustomize "${DESIRED_TREE}" >"${EVIDENCE_DIR}/fleet-default-branch.yaml"
 if SPOKE_NAME="${SPOKE}" SPOKE_NAMESPACE="${NAMESPACE}" yq -e \
     'select(.metadata.name == strenv(SPOKE_NAME) and .metadata.namespace == strenv(SPOKE_NAMESPACE))' \
     "${EVIDENCE_DIR}/fleet-default-branch.yaml" >/dev/null; then
-  log::die "Fleet origin/main still declares ${NAMESPACE}/${SPOKE}; merge its removal first"
+  log::die "Fleet origin/${FLEET_BRANCH} still declares ${NAMESPACE}/${SPOKE}; merge its removal first"
 fi
-ACTUAL_REVISION=$(kubectl get application csoc-fleet -n argocd -o jsonpath='{.status.sync.revision}')
+
+OWNING_APPLICATION=$(kubectl get application -n argocd -l "csoc.js2.org/spoke=${SPOKE}" \
+  -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+OWNING_APPLICATION=${OWNING_APPLICATION:-csoc-fleet}
+log::info "Owning Application: ${OWNING_APPLICATION}"
+
+ACTUAL_REVISION=$(kubectl get application "${OWNING_APPLICATION}" -n argocd -o jsonpath='{.status.sync.revision}')
 [[ "${ACTUAL_REVISION}" == "${DESIRED_REVISION}" ]] \
-  || log::die "csoc-fleet has not compared the exact fleet origin/main retirement commit"
-[[ "$(kubectl get application csoc-fleet -n argocd -o jsonpath='{.status.operationState.phase}')" == Succeeded ]] \
-  || log::die "csoc-fleet must complete a non-pruning sync at the retirement commit"
-[[ "$(kubectl get application csoc-fleet -n argocd -o jsonpath='{.status.operationState.syncResult.revision}')" == "${DESIRED_REVISION}" ]] \
-  || log::die "csoc-fleet's successful sync does not match the retirement commit"
-[[ "$(kubectl get application csoc-fleet -n argocd -o jsonpath='{.spec.syncPolicy.automated.prune}')" != true ]] \
-  || log::die "csoc-fleet must not enable pruning during deliberate deletion"
+  || log::die "${OWNING_APPLICATION} has not compared the exact fleet ${FLEET_BRANCH} retirement commit"
+[[ "$(kubectl get application "${OWNING_APPLICATION}" -n argocd -o jsonpath='{.status.operationState.phase}')" == Succeeded ]] \
+  || log::die "${OWNING_APPLICATION} must complete a non-pruning sync at the retirement commit"
+[[ "$(kubectl get application "${OWNING_APPLICATION}" -n argocd -o jsonpath='{.status.operationState.syncResult.revision}')" == "${DESIRED_REVISION}" ]] \
+  || log::die "${OWNING_APPLICATION}'s successful sync does not match the retirement commit"
+[[ "$(kubectl get application "${OWNING_APPLICATION}" -n argocd -o jsonpath='{.spec.syncPolicy.automated.prune}')" != true ]] \
+  || log::die "${OWNING_APPLICATION} must not enable pruning during deliberate deletion"
 
 log::step 2 "Capturing Kubernetes, CAPI, KRO, and exact OpenStack ownership"
 kubectl get namespace "${NAMESPACE}" -o json >"${EVIDENCE_DIR}/namespace.json"
